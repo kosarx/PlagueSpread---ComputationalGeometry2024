@@ -1,0 +1,52 @@
+# Ignore build output
+build/
+dist/
+*.exe
+*.dll
+
+# Ignore dependencies
+node_modules/
+vendor/
+
+# Ignore IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore sensitive or personal information
+config.ini
+secrets.txt
+
+# Ignore compiled files
+*.class
+*.jar
+*.war
+*.ear
+
+# Ignore generated files
+*.min.js
+*.min.css
+
+# Ignore database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignore documentation
+docs/
+
+# Ignore miscellaneous files
+*.bak
+*.zip
+*.gz
+*.tar
