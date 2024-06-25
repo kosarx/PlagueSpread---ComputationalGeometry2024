@@ -19,7 +19,10 @@ from vvrpywork.shapes import (
 from plagueSpread.Voronoi.Voronoi import Voronoi # Voronoi is a class from the plagueSpread package\ 
 #                                                 Needs debugging, doesn't work!
 from plagueSpread.utils.GeometryUtils import LineEquation2D
-from plagueSpread.utils.GeometryUtils import isInsidePolygon, barycentric_interpolate_height
+from plagueSpread.utils.GeometryUtils import (
+        isInsidePolygon, barycentric_interpolate_height,
+        calculate_triangle_centroid,
+)
 
 # Standard imports
 import random
@@ -42,22 +45,29 @@ TRIAL_MODE = False # False
 
 class MainClass:
     def __init__(self, option = None):
-        console_log("================= PLAGUE SPREAD =================")
-        print("> Press 1 to run the 2D Plague Spread simulation.")
-        print("> Press 2 to run the 3D Plague Spread simulation.")
+        print("================= PLAGUE SPREAD =================")
         self.option = option
         self.get_input()
     
     def get_input(self):
-        if not self.option:
-            self.option = input("> ")
-        selection = self.option
-        if selection == "1" or selection == 1:
-            self.plagueSpread2D = PlagueSpread2D(WIDTH_2D, HEIGHT_2D)
-            self.plagueSpread2D.mainLoop()
-        elif selection == "2" or selection == 2:
-            self.plagueSpread3D = PlagueSpread3D(WIDTH_3D, HEIGHT_3D)
-            self.plagueSpread3D.mainLoop()
+
+        while True:
+            if not self.option:
+                print("> Press 1 to run the 2D Plague Spread simulation.")
+                print("> Press 2 to run the 3D Plague Spread simulation.")
+                self.option = input("> ")
+            selection = self.option
+            if selection == "1" or selection == 1:
+                self.plagueSpread2D = PlagueSpread2D(WIDTH_2D, HEIGHT_2D)
+                self.plagueSpread2D.mainLoop()
+
+            elif selection == "2" or selection == 2:
+                self.plagueSpread3D = PlagueSpread3D(WIDTH_3D, HEIGHT_3D)
+                self.plagueSpread3D.mainLoop()
+            elif selection == "q" or selection == "-1" or selection == "exit":
+                break
+            self.option = ""
+        print("Goodbye...")
 
 class PlagueSpread2D(Scene2D):
     def __init__(self, WIDTH, HEIGHT):
@@ -712,6 +722,7 @@ class PlagueSpread3D(Scene3D):
 
         self.scenario_parameters_init()
         self.create_grid()
+        self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1)
 
         self.construct_scenario() if not self.TRIAL_MODE else self.construct_mini_scenario()
         if self.wells_pcd.points.size > 1:
@@ -736,10 +747,35 @@ class PlagueSpread3D(Scene3D):
 
         # Combine x, y, and z coordinates
         grid = np.column_stack([grid_x_flat, grid_y_flat, z_values])
-        grid = PointSet3D(grid, size=1, color=Color.BLACK)
+        grid = PointSet3D(grid, size=1, color=Color.GRAY)
         self.grid = grid
         self.addShape(self.grid, "grid")
 
+    def triangulate_grid(self, grid, size, x_min, x_max):
+        '''Triangulates the grid to form a mesh.'''
+        list_of_indexed_triangles = []
+        for i, point in enumerate(grid):
+            x, y, z = point
+            next = i + 1
+            upper = i - size
+            diagonal = i + size + 1
+            if next % size != 0:
+                if upper >= 0:
+                    list_of_indexed_triangles.append(np.array([i, upper, next]))
+                if diagonal < len(grid):
+                    list_of_indexed_triangles.append(np.array([i, next, diagonal]))
+        
+        # store the indices of the triangles
+        self.triangle_indices = list_of_indexed_triangles
+
+        line_indices = []
+        for i, triangle_index in enumerate(list_of_indexed_triangles):
+            for j in range(3):
+                line_indices.append((triangle_index[j], triangle_index[(j + 1) % 3]))
+
+        lineset = LineSet3D(grid, line_indices, color=Color.GRAY)
+        self.addShape(lineset, "grid_lines")
+        
     def _scenario_mode_init(self):
         self.DEBUG = DEBUG
         self.CONSOLE_TALK = CONSOLE_TALK

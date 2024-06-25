@@ -124,49 +124,11 @@ def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
     z = l1 * A[2] + l2 * B[2] + l3 * C[2]
     return z
 
-
-def deprecated_barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
-    '''Interpolates the height of a point using barycentric interpolation.'''
-    x, y = point[0], point[1]
-    cell_size = (x_max - x_min)/(SIZE - 1)
-
-    col = np.floor((x+1) / cell_size)
-    row = np.floor((y+1) / cell_size)
-
-    # grid cell corners
-    x0, y0 = x_min + col * cell_size, x_min + row * cell_size
-    x1, y1 = x_min + (col + 1) * cell_size, x_min + (row + 1) * cell_size
-
-    # cell vertices
-    A = np.array([x0, y0, z_values[int(row * SIZE + col)]])
-    B = np.array([x1, y0, z_values[int(row * SIZE + col + 1)]])
-    C = np.array([x0, y1, z_values[int((row + 1) * SIZE + col)]])
-    D = np.array([x1, y1, z_values[int((row + 1) * SIZE + col + 1)]])
-    # print(f"A: {A}, B: {B}, C: {C}, D: {D}")
-
-    # determine in which triangle of the cell the point is
-    if (x - x0) * (y1 - y0) > (y - y0) * (x1 - x0):
-        # Triangle ABC
-        v0, v1, v2 = B - A, C - A, np.array([x, y, 0]) - A
-    else:
-        # Triangle BCD
-        v0, v1, v2 = C - B, D - B, np.array([x, y, 0]) - B
-
-    # compute the barycentric coordinates
-    d00 = np.dot(v0, v0)
-    d01 = np.dot(v0, v1)
-    d11 = np.dot(v1, v1)
-    d20 = np.dot(v2, v0)
-    d21 = np.dot(v2, v1)
-
-    denomanator = d00 * d11 - d01 * d01
-    l1 = (d11 * d20 - d01 * d21) / denomanator
-    l2 = (d00 * d21 - d01 * d20) / denomanator
-    l3 = 1 - l1 - l2
-
-    # interpolate the height of the point
-    z = l1 * A[2] + l2 * B[2] + l3 * C[2]
-    return z
+def calculate_triangle_centroid(points):
+    '''Calculates the centroid of a triangle given its vertices.'''
+    x = (points[0][0] + points[1][0] + points[2][0]) / 3
+    y = (points[0][1] + points[1][1] + points[2][1]) / 3
+    return (x, y)
 
 if __name__ == "__main__":
     # test the functions
