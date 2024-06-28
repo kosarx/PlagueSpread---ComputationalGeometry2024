@@ -2,8 +2,10 @@ import os
 current_path = os.path.dirname(os.path.realpath(__file__))
 
 import sys
-sys.path.append(f"{current_path}/plagueSpread/Voronoi/")
-sys.path.append(f"{current_path}/plagueSpread/utils/")
+sys.path.append(os.path.join(current_path, "plagueSpread", "Voronoi"))
+# sys.path.append(os.path.join(current_path, "plagueSpread", "utils"))
+# sys.path.append(os.path.join(current_path, "plagueSpread", "resources"))
+
 
 import typing as tp
 
@@ -19,10 +21,7 @@ from vvrpywork.shapes import (
 from plagueSpread.Voronoi.Voronoi import Voronoi # Voronoi is a class from the plagueSpread package\ 
 #                                                 Needs debugging, doesn't work!
 from plagueSpread.utils.GeometryUtils import LineEquation2D
-from plagueSpread.utils.GeometryUtils import (
-        isInsidePolygon, barycentric_interpolate_height,
-        calculate_triangle_centroid,
-)
+from plagueSpread.utils.GeometryUtils import isInsidePolygon2D
 
 # Standard imports
 import random
@@ -44,26 +43,31 @@ CONSOLE_TALK = True # False
 TRIAL_MODE = False # False
 
 class MainClass:
-    def __init__(self, option = None):
+    def __init__(self, start_with = None, end_immediately = False):
         print("================= PLAGUE SPREAD =================")
-        self.option = option
+        self.option = start_with
+        self.end_immediately = end_immediately
         self.get_input()
     
     def get_input(self):
-
+        
         while True:
             if not self.option:
                 print("> Press 1 to run the 2D Plague Spread simulation.")
                 print("> Press 2 to run the 3D Plague Spread simulation.")
+                print("> Press -1 or q to exit.")
                 self.option = input("> ")
             selection = self.option
             if selection == "1" or selection == 1:
                 self.plagueSpread2D = PlagueSpread2D(WIDTH_2D, HEIGHT_2D)
                 self.plagueSpread2D.mainLoop()
-
+                if self.end_immediately:
+                    break
             elif selection == "2" or selection == 2:
                 self.plagueSpread3D = PlagueSpread3D(WIDTH_3D, HEIGHT_3D)
                 self.plagueSpread3D.mainLoop()
+                if self.end_immediately:
+                    break
             elif selection == "q" or selection == "-1" or selection == "exit":
                 break
             self.option = ""
@@ -631,7 +635,7 @@ class PlagueSpread2D(Scene2D):
             # retrieve the vertices that make up the region
             vertices = [vor.vertices[j] for j in region if j != -1]
             # if the point is within the region, return the index of the region
-            if isInsidePolygon(point, vertices):
+            if isInsidePolygon2D(point, vertices):
                 return i
         return -1
     
@@ -707,6 +711,12 @@ class PlagueSpread2D(Scene2D):
 ##=======================================================================================================================
 ##=======================================================================================================================
 
+from plagueSpread.utils.GeometryUtils import (
+    get_triangle_of_grid_point, barycentric_interpolate_height, calculate_triangle_centroid 
+)
+from plagueSpread.utils.DijkstraAlgorithm import Dijkstra
+from plagueSpread.KDTree import KdNode
+
 from vvrpywork.scene import Scene3D, get_rotation_matrix, world_space
 from vvrpywork.shapes import (
     Point3D, Line3D, Arrow3D, Sphere3D, Cuboid3D, Cuboid3DGeneralized,
@@ -714,6 +724,8 @@ from vvrpywork.shapes import (
 )
 
 from noise import pnoise2
+from time import time
+from tqdm import tqdm
 
 class PlagueSpread3D(Scene3D):
     def __init__(self, WIDTH, HEIGHT):
@@ -721,8 +733,16 @@ class PlagueSpread3D(Scene3D):
         self._scenario_mode_init()
 
         self.scenario_parameters_init()
+
+        # setting up grid essentials
         self.create_grid()
         self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1)
+        centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update = self.perform_file_checks()
+        self.calculate_centroids(centroids_need_update)
+        self.create_adjacency_matrix(adj_need_update)
+        self.create_distances_matrix(dist_need_update) # centroid distances matrix is the graph for Dijkstra
+        self.create_shortest_paths_matrix(short_paths_need_update)
+        console_log("Grid set up\n-----------------")
 
         self.construct_scenario() if not self.TRIAL_MODE else self.construct_mini_scenario()
         if self.wells_pcd.points.size > 1:
@@ -732,6 +752,64 @@ class PlagueSpread3D(Scene3D):
         self._print_instructions()
         self.my_mouse_pos = Point3D((0, 0, 0))
         self.addShape(self.my_mouse_pos, "mouse")
+
+        # self.DEBUG = True
+        # self._check_grid_mismatch(0) if self.DEBUG else None
+        # self._check_grid_mismatch(1) if self.DEBUG else None
+        # self._check_grid_mismatch(2) if self.DEBUG else None
+        # self._check_grid_mismatch(20) if self.DEBUG else None
+        # self._check_grid_mismatch(21) if self.DEBUG else None
+        # self._check_grid_mismatch(22) if self.DEBUG else None
+        # self._check_grid_mismatch(680) if self.DEBUG else None
+        # self._check_grid_mismatch(681) if self.DEBUG else None
+        # self._check_grid_mismatch(682) if self.DEBUG else None
+        # self._check_grid_mismatch(685) if self.DEBUG else None
+        # self._check_grid_mismatch(686) if self.DEBUG else None
+        # self._check_grid_mismatch(117) if self.DEBUG else None
+        
+
+    def _check_grid_mismatch(self, idx):
+        ## ---- PLACE THIS WHEN TRY EXCEPT FAILS IN GEODESIC DISTANCE ---- ##
+        ######################################################################
+        '''Check if get_triangle_of_grid_point and self.triangle_indices are consistent.'''
+        console_log(f"{idx} triangle indices: {self.triangle_indices[idx]}")
+        console_log(f"{idx} triangle {self.grid.points[self.triangle_indices[idx][0]]}, {self.grid.points[self.triangle_indices[idx][1]]}, {self.grid.points[self.triangle_indices[idx][2]]}")
+        p1 = self.grid.points[self.triangle_indices[idx][0]]
+        p2 = self.grid.points[self.triangle_indices[idx][1]]
+        p3 = self.grid.points[self.triangle_indices[idx][2]]
+
+        # self.addShape(Point3D(p1, size=1, color=Color.RED), f"p1_{idx}")
+        # self.addShape(Point3D(p2, size=1, color=Color.RED), f"p2_{idx}")
+        # self.addShape(Point3D(p3, size=1, color=Color.RED), f"p3_{idx}")
+
+        # get the centroid of the triangle
+        centroid = self.centroids[idx]
+        console_log(f"Centroid: {centroid}")
+        # self.addShape(Point3D(centroid, size=1, color=Color.DARKGREEN), f"centroid_{idx}") 
+
+        function_triangle = get_triangle_of_grid_point(centroid, self.grid.points[:, 2], self.GRID_SIZE, -1, 1)
+        console_log(f"Function triangle: {function_triangle}")
+        f1, f2, f3 = function_triangle
+        # self.addShape(Point3D(f1, size=1, color=Color.BLUE), f"f1_{idx}")
+        # self.addShape(Point3D(f2, size=1, color=Color.BLUE), f"f2_{idx}")
+        # self.addShape(Point3D(f3, size=1, color=Color.BLUE), f"f3_{idx}")
+
+        # are they equal?
+        if not np.array_equal(function_triangle, self.grid.points[self.triangle_indices[idx]]):
+            console_log(f"Triangle indices {idx} mismatch!")
+            console_log(f"Function triangle: {function_triangle}")
+            console_log(f"Self triangle: {self.triangle_indices[idx]}")
+
+        # debug triangle
+        pp = np.array([[0.15789474, -0.78947368, -0.1404871],
+              [0.26315789, -0.68421053, -0.19282421],
+              [0.15789474, -0.68421053, -0.10920157]])
+        self.addShape(Point3D(pp[0], size=1, color=Color.YELLOW), f"pp1_{idx}")
+        self.addShape(Point3D(pp[1], size=1, color=Color.YELLOW), f"pp2_{idx}")
+        self.addShape(Point3D(pp[2], size=1, color=Color.YELLOW), f"pp3_{idx}")
+
+        self.addShape(Point3D([ 0.19731697, -0.68796272, -0.14163439], size=0.2, color=Color.ORANGE), f"p_{idx}")
+
 
     def create_grid(self):
         '''Creates a 3D grid on the z=0 plane'''
@@ -774,8 +852,243 @@ class PlagueSpread3D(Scene3D):
                 line_indices.append((triangle_index[j], triangle_index[(j + 1) % 3]))
 
         lineset = LineSet3D(grid, line_indices, color=Color.GRAY)
+        # add the lineset to the scene
         self.addShape(lineset, "grid_lines")
+
+        self.triangles_lineset =lineset
+    
+    def perform_file_checks(self):
+        update_centroids = True
+        update_distances = True
+        update_adjacency = True
+        update_shortest_paths = True
+
+        # file paths
+        path = os.path.join(os.path.dirname(__file__), "plagueSpread", "resources")
+        grid_file_path = os.path.join(path, "grid.npy")
+
+        # check if grid.npy exists
+        console_log("Checking if the grid file exists...")
+        grid_file_check = os.path.exists(grid_file_path)
+        if not grid_file_check:
+            console_log("Grid file does not exist. Saving grid...\n---------")
+            start_time = time()
+            np.save(grid_file_path, self.grid.points)
+            end_time = time()
+            console_log(f"Grid saved in {end_time - start_time} seconds.")
         
+        # check if the instance grid is the same as the saved grid
+        if grid_file_check:
+            console_log("Checking if the grid is the same as the stored grid...")
+            start_time = time()
+            saved_grid = np.load(grid_file_path)
+            end_time = time()
+            console_log(f"Stored grid loaded in {end_time - start_time} seconds.")
+            is_same_grid = np.array_equal(saved_grid, self.grid.points)
+            console_log(f"The instance grid is the same as the stored grid? {is_same_grid}")
+
+            # if the grids are not the same, store the new grid, both need updating
+            if not is_same_grid:
+                console_log("Grid has changed, storing new one...\n---------")
+                np.save(grid_file_path, self.grid.points)
+                return update_centroids, update_distances, update_adjacency, update_shortest_paths
+        # else, if the grid file didn't exist, we've already assured that the grid is the same as the saved grid
+        else:
+            is_same_grid = True
+
+        console_log("Checking if the centroids exist...")
+        centroids_file_path = os.path.join(path, "centroids.npy")
+
+        # if the grid is the same as the saved grid and we have the centroids saved, load them
+        if os.path.exists(centroids_file_path) and is_same_grid:
+            console_log("Centroids exist, grid hasn't changed.")
+            update_centroids = False
+        # else, if the grid is the same as the saved grid but we don't have the centroids saved, calculate them, save them, and load them
+        elif not os.path.exists(centroids_file_path) and is_same_grid:
+            console_log("Centroids do not exist, grid hasn't changed.")
+            update_centroids = True
+
+        console_log("Checking if the adjacency matrix exists...")
+        adj_file_path = os.path.join(path, "adjacency.npy")
+
+        if os.path.exists(adj_file_path) and is_same_grid:
+            console_log("Adjacency matrix exists, grid hasn't changed.")
+            update_adjacency = False
+        elif not os.path.exists(adj_file_path) and is_same_grid:
+            console_log("Adjacency matrix does not exist, grid hasn't changed.")
+            update_adjacency = True
+
+        console_log("Checking if the distances matrix exists...")
+        distances_file_path = os.path.join(path, "centroid_distances.npy")
+    
+        # if the grid is the same as the saved grid and we have the distances matrix saved, load it
+        if os.path.exists(distances_file_path) and is_same_grid:
+            console_log("Distances matrix exists, grid hasn't changed.")
+            update_distances = False
+        # else, if the grid is the same as the saved grid but we don't have the distances matrix saved, calculate it, save it, and load it
+        elif not os.path.exists(distances_file_path) and is_same_grid:
+            console_log("Distances matrix does not exist, grid hasn't changed.")
+            update_distances = True
+        
+        console_log("Checking if the shortest paths exist...")
+        shortest_paths_file_path = os.path.join(path, "shortest_paths.npy")
+        # if the grid is the same as the saved grid, and we have the shortest paths saved, load them
+        if os.path.exists(shortest_paths_file_path) and is_same_grid:
+            console_log("Shortest paths exist, grid hasn't changed.")
+            update_shortest_paths = False
+        # else, if the grid is the same as the saved grid but we don't have the shortest paths saved, calculate them, save them, and load them
+        elif not os.path.exists(shortest_paths_file_path) and is_same_grid:
+            console_log("Shortest paths do not exist, grid hasn't changed.")
+            update_shortest_paths = True
+        
+        return update_centroids, update_distances, update_adjacency, update_shortest_paths
+    
+    def calculate_centroids(self, update:bool=False):
+        '''Calculates the centroids of the triangles.'''
+
+        path = os.path.join(os.path.dirname(__file__), "plagueSpread", "resources")
+        centroids_file_path = os.path.join(path, "centroids.npy")
+        if not update:
+            console_log("Centroids exist.")
+            console_log("Loading the centroids...")
+            start_time = time()
+            centroids = np.load(centroids_file_path)
+            end_time = time()
+            console_log(f"Centroids loaded in {end_time - start_time} seconds.")
+        else:
+            centroids = []
+            for triangle_index in tqdm(self.triangle_indices, desc="Calculating centroids"):
+                triangle = [self.grid.points[triangle_index[0]], self.grid.points[triangle_index[1]], self.grid.points[triangle_index[2]]]
+                centroid = calculate_triangle_centroid(triangle)
+                centroids.append(centroid)
+            centroids = np.array(centroids)
+            console_log("Saving the centroids...")
+            start_time = time()
+            np.save(centroids_file_path, centroids)
+            end_time = time()
+            console_log(f"Centroids saved in {end_time - start_time} seconds.")
+
+        console_log(f"Shape of the centroids array: {centroids.shape}")
+        self.centroids = centroids
+        return centroids
+
+    def calculate_adjacency_matrix(self):
+        '''Calculates the adjacency matrix for the grid.'''
+        console_log("Calculating the adjacency matrix...")
+        adjacency_matrix = np.zeros((len(self.triangle_indices), len(self.triangle_indices)))
+        for i, triangle in enumerate(tqdm(self.triangle_indices, desc="Calculating adjacency matrix")):
+            # for every triangle, we consider its adjacent triangles only if they share an edge
+            for j, other_triangle in enumerate(self.triangle_indices):
+                if i == j:
+                    continue
+                # if the triangles share an edge, they are adjacent
+                if len(set(triangle) & set(other_triangle)) == 2:
+                    adjacency_matrix[i, j] = 1
+        console_log(f"Shape of the adjacency matrix: {adjacency_matrix.shape}")
+        return adjacency_matrix
+
+    def create_adjacency_matrix(self, update:bool=False):
+        '''Creates an adjacency matrix for the grid.'''
+        adjacency_matrix = None
+
+        # file paths
+        path = os.path.join(os.path.dirname(__file__), "plagueSpread", "resources")
+        adj_file_path = os.path.join(path, "adjacency.npy")
+        if not update:
+            console_log("Adjacency matrix exists.")
+            
+            console_log("Loading the adjacency matrix...")
+            start_time = time()
+            adjacency_matrix = np.load(adj_file_path)
+            end_time = time()
+            console_log(f"Adjacency matrix loaded in {end_time - start_time} seconds.")
+        else:
+            console_log("Adjacency matrix: calculating and storing it...")
+
+            # calculate the adjacency matrix
+            adjacency_matrix = self.calculate_adjacency_matrix()
+            console_log("Saving the adjacency matrix...")
+            start_time = time()
+            np.save(adj_file_path, adjacency_matrix)
+            end_time = time()
+            console_log(f"Adjacency matrix saved in {end_time - start_time} seconds.")
+
+        self.adjacency_matrix = adjacency_matrix
+        return adjacency_matrix
+
+    def calculate_distances_matrix(self):
+        '''Calculates a matrix of distances between the centroids of the triangles.'''
+
+        # for all the centroids, calculate the distances between them
+        centroids = self.centroids
+        distances_matrix = np.zeros((len(centroids), len(centroids)))
+        for i, centroid1 in enumerate(tqdm(centroids, desc="Calculating distances", leave=False)):
+            for j, centroid2 in enumerate(centroids):
+                # if the triangle centroids are adjacent, calculate the distance between them, otherwise 0 (same triangle or not adjacent)
+                if self.adjacency_matrix[i, j] == 1:
+                    distances_matrix[i, j] = np.linalg.norm(centroid1 - centroid2)
+                else:
+                    distances_matrix[i, j] = 0
+        # shape of the distances matrix for 80x80 grid should be (80, 80)
+        console_log(f"Shape of the distances matrix: {distances_matrix.shape}")
+        return distances_matrix
+        
+    def create_distances_matrix(self, update:bool=False):
+        '''Creates a matrix of distances between the centroids of the triangles.'''
+        centroid_distances_matrix = None
+        path = os.path.join(os.path.dirname(__file__), "plagueSpread", "resources")
+        distances_file_path = os.path.join(path, "centroid_distances.npy")
+        
+        if not update:
+            console_log("Loading the distances matrix...")
+            start_time = time()
+            centroid_distances_matrix = np.load(distances_file_path)
+            end_time = time()
+            console_log(f"Distances matrix loaded in {end_time - start_time} seconds.")
+        else:
+            console_log("Need to calculate the distances matrix...")
+            start_time = time()
+            centroid_distances_matrix = self.calculate_distances_matrix()
+            end_time = time()
+            console_log(f"Distances matrix calculated in {end_time - start_time} seconds.")
+            console_log("Saving the distances matrix...")
+            start_time = time()
+            np.save(distances_file_path, centroid_distances_matrix)
+            end_time = time()
+            console_log(f"Distances matrix saved in {end_time - start_time} seconds.")
+        
+        self.centroid_distances_matrix = centroid_distances_matrix
+        return centroid_distances_matrix
+    
+    def create_shortest_paths_matrix(self, update:bool=False):
+        '''Creates a matrix of shortest paths between the centroids of the triangles.'''
+        shortest_paths_matrix = None
+        path = os.path.join(os.path.dirname(__file__), "plagueSpread", "resources")
+        shortest_paths_file_path = os.path.join(path, "shortest_paths.npy")
+        if not update:
+            console_log("Loading the shortest paths matrix...")
+            start_time = time()
+            shortest_paths_matrix = np.load(shortest_paths_file_path, allow_pickle=True)
+            end_time = time()
+            console_log(f"Shortest paths matrix loaded in {end_time - start_time} seconds.")
+        else:
+            console_log("Calculating the shortest paths matrix...")
+            start_time = time()
+            self.dijkstra = Dijkstra(self.centroid_distances_matrix) # Dijkstra object for finding shortest paths between centroids
+            self.dijkstra.calculate_all_shortest_paths()
+            shortest_paths_matrix = self.dijkstra.get_distances()
+            end_time = time()
+            console_log(f"Shortest paths matrix calculated in {end_time - start_time} seconds.")
+            console_log("Saving the shortest paths matrix...")
+            start_time = time()
+            np.save(shortest_paths_file_path, shortest_paths_matrix)
+            end_time = time()
+            console_log(f"Shortest paths matrix saved in {end_time - start_time} seconds.")
+        
+        console_log("Shape of the shortest paths matrix: ", shortest_paths_matrix.shape)
+        self.shortest_paths_matrix = shortest_paths_matrix
+        return shortest_paths_matrix
+    
     def _scenario_mode_init(self):
         self.DEBUG = DEBUG
         self.CONSOLE_TALK = CONSOLE_TALK
@@ -948,7 +1261,7 @@ class PlagueSpread3D(Scene3D):
             version_2()
 
     def scenario_parameters_init(self):
-        self.GRID_SIZE = 80 # will create a grid of N x N points
+        self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 80
         self.grid = None
         self.bbx =[[-1, -1, 0], [1, 1, 0]]
         self.bound = None
@@ -990,20 +1303,20 @@ class PlagueSpread3D(Scene3D):
             self.print(">-> P: reduce probability of closest well.")
             self.print(">-> SHIFT + P: increase probability of closest well.")
 
-        console_log("--> Press ENTER to reset the scene & print instructions.")
-        console_log("--> Press BACKSPACE to print the scenario parameters.")
-        console_log("--> Press UP to toggle between trial mode and normal mode.")
-        console_log("--> Press RIGHT or LEFT to increase or decrease the number of wells.")
-        console_log("--> Press M or N to increase or decrease the population.")
-        console_log("--> Press 1 or 2 to set the scenario to version 1 or 2.")
-        console_log("--> Press V to toggle the Voronoi diagram.")
-        console_log("--> Press SHIFT + V to use the Voronoi diagram for computations.")
-        console_log("--> Press LEFT MOUSE BUTTON to add or remove a well.")
-        console_log("--> Press RIGHT MOUSE BUTTON to infect or disinfect a well.")
-        console_log("--> Press R to toggle between deterministic and stochastic scenario.")
+        print("--> Press ENTER to reset the scene & print instructions.")
+        print("--> Press BACKSPACE to print the scenario parameters.")
+        print("--> Press UP to toggle between trial mode and normal mode.")
+        print("--> Press RIGHT or LEFT to increase or decrease the number of wells.")
+        print("--> Press M or N to increase or decrease the population.")
+        print("--> Press 1 or 2 to set the scenario to version 1 or 2.")
+        print("--> Press V to toggle the Voronoi diagram.")
+        print("--> Press SHIFT + V to use the Voronoi diagram for computations.")
+        print("--> Press LEFT MOUSE BUTTON to add or remove a well.")
+        print("--> Press RIGHT MOUSE BUTTON to infect or disinfect a well.")
+        print("--> Press R to toggle between deterministic and stochastic scenario.")
         if self.RANDOM_SELECTION:
-            console_log("-->---> Press P to reduce the probability of choosing the closest well.")
-            console_log("-->---> Press SHIFT + P to increase the probability of choosing the closest well.")
+            print("-->---> Press P to reduce the probability of choosing the closest well.")
+            print("-->---> Press SHIFT + P to increase the probability of choosing the closest well.")
 
     def wipe_scene(self):
         '''Wipes the scene of all shapes.'''
@@ -1046,7 +1359,7 @@ class PlagueSpread3D(Scene3D):
 
         self.infect_wells(self.ratio_of_infected_wells)
 
-        self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+        (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()) #if not self.DEBUG else None
 
     def construct_mini_scenario(self):
         '''Constructs a mini scenario for testing purposes.'''
@@ -1072,7 +1385,7 @@ class PlagueSpread3D(Scene3D):
 
         self.infect_wells(self.ratio_of_infected_wells)
 
-        self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+        (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()) #if self.DEBUG else None
 
 
     def adjust_height_of_points(self, pointset:PointSet3D):
@@ -1091,7 +1404,7 @@ class PlagueSpread3D(Scene3D):
             ratio: The ratio of wells to infect. If None, use hard_number.
             hard_number: The number of wells to infect. If None, use ratio.
         '''
-        console_log(f"Entering infect_wells with Ratio: {ratio}, Hard number: {hard_number}")
+        self.terminal_log(f"Entering infect_wells with Ratio: {ratio}, Hard number: {hard_number}")
 
         # infected_wells_indices is a list of indices of the infected wells from the wells_pcd.points
         self.infected_wells_indices = []
@@ -1156,13 +1469,184 @@ class PlagueSpread3D(Scene3D):
         '''
         console_log(f"Entering remove_single_well with index {index}")
 
-    def find_infected_people(self):
-        '''Finds the people infected by the wells.'''
-        ...
+    def geodesic_distance(self, start:Point3D|np.ndarray|list|tuple, end:Point3D|np.ndarray|list|tuple):
+        '''Calculates the geodesic distance between two points on the grid.'''
+        if isinstance(start, Point3D):
+            start = np.array([start.x, start.y, start.z])
+        if isinstance(end, Point3D):
+            end = np.array([end.x, end.y, end.z])
+        if isinstance(start, (list, tuple)):
+            start = np.array(start)
+        if isinstance(end, (list, tuple)):
+            end = np.array(end)
     
+        # get the triangle in which the start point is located
+        starting_triangle_vertices = get_triangle_of_grid_point(start, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        starting_triangle_vertices = np.array(starting_triangle_vertices)
+        # get the triangle in which the end point is located
+        ending_triangle_vertices = get_triangle_of_grid_point(end, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        ending_triangle_vertices = np.array(ending_triangle_vertices)
+        
+        if np.array_equal(starting_triangle_vertices, ending_triangle_vertices):
+            # if the start and end points are in the same triangle, return the euclidean distance between them
+            return np.linalg.norm(start - end)
+        # console_log(f"starting point {start}, ending point {end}")
+        # console_log(f"Starting triangle vertices: {starting_triangle_vertices}, Ending triangle vertices: {ending_triangle_vertices}")
+        # find the index of the starting and ending triangle in the triangle_indices list
+        starting_triangle_found, ending_triangle_found = False, False
+        for i, triangle_index in enumerate(self.triangle_indices):
+            grid_points = self.grid.points[triangle_index]
+            # console_log(f"Grid points: {grid_points}")
+            if np.array_equal(grid_points, starting_triangle_vertices):
+                starting_triangle_idx = i
+                starting_triangle_found = True
+            if np.array_equal(grid_points, ending_triangle_vertices):
+                ending_triangle_idx = i
+                ending_triangle_found = True
+            if starting_triangle_found and ending_triangle_found:
+                break
+        if not starting_triangle_found and ending_triangle_found:
+            console_log(f"Starting triangle not found for vertices {starting_triangle_vertices}")
+            console_log("================>", ending_triangle_idx)
+        if not ending_triangle_found and starting_triangle_found:
+            console_log(f"Ending triangle not found for vertices {ending_triangle_vertices}")
+            console_log("================>", starting_triangle_idx)
+        if not starting_triangle_found and not ending_triangle_found:
+            console_log(f"Starting and ending triangles not found for vertices {starting_triangle_vertices} and {ending_triangle_vertices}")
+        if not starting_triangle_found or not ending_triangle_found:
+            raise ValueError("Starting or ending triangle not found.")
+        # else:
+        #     console_log(f"Passed")
+        
+        starting_centroid = self.centroids[starting_triangle_idx]
+        # get the euclidean distance between the start point and the centroid of the triangle
+        start_distance = np.linalg.norm(start - starting_centroid)
+
+        ending_centroid = self.centroids[ending_triangle_idx]
+        # get the euclidean distance between the end point and the centroid of the triangle
+        end_distance = np.linalg.norm(end - ending_centroid)
+
+        # get the geodesic distance between the starting_centroid and the ending_centroid
+        geodesic_distance = self.shortest_paths_matrix[starting_triangle_idx][ending_triangle_idx]    #self.dijkstra.get_distance_from_to(starting_triangle_idx, ending_triangle_idx)
+        # add the euclidean distances to the geodesic distance
+        total_distance = geodesic_distance + start_distance + end_distance
+        return total_distance
+    
+    def find_infected_people_with_voronoi(self):
+        '''Finds the people infected by the wells, using Voronoi diagram.'''
+        ...
+
+    def find_infected_people(self):
+        '''Finds the people infected by the wells, using geodesic distances.'''
+
+        # infected_people_indices is a list of indices of the infected people from the population_pcd.points
+        self.infected_people_indices = []
+
+        population_nparray = np.array(self.population_pcd.points)
+        population_color_nparray = np.array(self.population_pcd.colors)
+        wells_nparray = np.array(self.wells_pcd.points)
+        
+        if not self.COMPUTE_WITH_VORONOI:
+            # for every person in the population, check if the closest well to them is infected
+            for i, person in enumerate(tqdm(population_nparray, desc="For all infected people")):
+                min_distance = np.inf
+                for j, well in enumerate(wells_nparray):
+                    # get the geodesic distance between the person and the well
+                    distance = self.geodesic_distance(person, well)
+                    # if the distance is less than the minimum distance, update the minimum distance
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_well_index = j
+                # if the closest well is infected, infect the person
+                if closest_well_index in self.infected_wells_indices:
+                    population_color_nparray[i] = self.infected_population_color
+                    self.infected_people_indices.append(i)
+
+            # update the colors of the population_pcd
+            self.population_pcd.colors = population_color_nparray
+            self.updateShape(self.population_pcd_name)
+
+        elif self.COMPUTE_WITH_VORONOI:
+            self.find_infected_people_with_voronoi()
+
+        self.terminal_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
+    
+    def get_geodesic_distances_from_to_many(self, person, wells, wells_triangle_indices):
+        '''Calculates the geodesic distances between a person and many wells.'''
+
+        # get the triangle in which the person is located
+        starting_triangle_vertices = get_triangle_of_grid_point(person, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        for i, triangle_index in enumerate(self.triangle_indices):
+            grid_points = self.grid.points[triangle_index]
+            if np.array_equal(grid_points, self.grid.points[starting_triangle_vertices]):
+                starting_triangle_idx = i
+                break
+
+        # get the euclidean distance between the person and the centroid of the triangle
+        starting_centroid = self.centroids[starting_triangle_idx]
+        person_to_centroid_distance = np.linalg.norm(person - starting_centroid)
+
+        # for all the wells, calculate the euclidean distance between the well and the centroid of the triangle
+        wells_to_centroids_distances = []
+        for i, well in enumerate(wells):
+            ending_centroid = self.centroids[wells_triangle_indices[i]]
+            well_to_centroid_distance = np.linalg.norm(well - ending_centroid)
+            wells_to_centroids_distances.append(well_to_centroid_distance)
+
+        self.dijkstra.calculate_shortest_paths_from_vertex(starting_triangle_idx)
+        shortest_distances_to_all = self.dijkstra.get_distances()
+        shortest_distances_to_wells = shortest_distances_to_all[wells_triangle_indices]
+
+        # for all the wells, calculate the total distance
+        total_distances = np.zeros(len(wells))
+        for i, distance in enumerate(shortest_distances_to_wells):
+            total_distances[i] = person_to_centroid_distance + distance + wells_to_centroids_distances[i]
+
+        # sort the wells by the total distances
+        sorted_wells = np.argsort(total_distances)
+        # get the 3 closest wells
+        closest_well_index = sorted_wells[0]
+        second_closest_well_index = sorted_wells[1]
+        third_closest_well_index = sorted_wells[2]
+
+        return closest_well_index, second_closest_well_index, third_closest_well_index
+
+
+
     def find_infected_people_stochastic(self):
         '''Finds the people infected by the wells in a stochastic manner.'''
-        ...
+        
+        # infected_people_indices is a list of indices of the infected people from the population_pcd.points
+        self.infected_people_indices = []
+
+        population_nparray = np.array(self.population_pcd.points)
+        population_color_nparray = np.array(self.population_pcd.colors)
+        wells_nparray = np.array(self.wells_pcd.points)
+
+        # for all wells, get the triangle in which the well is located
+        wells_triangles_indices = []
+        for well in wells_nparray:
+            triangle_vertices = get_triangle_of_grid_point(well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+            for i, triangle_index in enumerate(self.triangle_indices):
+                if np.array_equal(triangle_index, triangle_vertices):
+                    wells_triangles_indices.append(i)
+                    break            
+
+        # for every person in the population, check if the closest well to them is infected
+        for i, person in enumerate(population_nparray):
+            # get the geodesic distances between the person and all the wells
+            closest_wells = self.get_geodesic_distances_from_to_many(person, wells_nparray, wells_triangles_indices)
+            choice = np.random.choice(closest_wells, p=[self.P1, self.P2, self.P3])
+            if choice in self.infected_wells_indices:
+                self.infected_people_indices.append(i)
+                population_color_nparray[i] = self.infected_population_color
+            else:
+                population_color_nparray[i] = self.healthy_population_color
+
+        self.population_pcd.colors = population_color_nparray
+        self.updateShape(self.population_pcd_name)
+
+        console_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
 
     def getVoronoi(self, points):
         '''Returns the Voronoi diagram of the points.'''
@@ -1188,4 +1672,4 @@ def console_log(*args):
         print(*args)   
 
 if __name__ == "__main__":
-    app = MainClass(2)
+    app = MainClass(start_with = 2, end_immediately = True)

@@ -61,7 +61,7 @@ class LineEquation2D:
 
         return d1 + d2 - d < 0
 
-def isInsidePolygon(point, polygon):  
+def isInsidePolygon2D(point, polygon):  
     '''Returns True if the point is inside the polygon.'''
     n = len(polygon)
     inside = False
@@ -88,8 +88,9 @@ def isInsidePolygon(point, polygon):
         p1x, p1y = p2x, p2y
     return inside
 
-def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
-    '''Interpolates the height of a point using barycentric interpolation.'''
+# for 3D scene
+
+def get_triangle_of_grid_point(point, z_values, SIZE, x_min, x_max):
     x, y = point[0], point[1]
     cell_size = (x_max - x_min)/(SIZE - 1)
 
@@ -103,17 +104,25 @@ def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
     # cell vertices
     A = np.array([x0, y0, z_values[int(row * SIZE + col)]])
     B = np.array([x1, y0, z_values[int(row * SIZE + col + 1)]])
-    C = np.array([x0, y1, z_values[int((row + 1) * SIZE + col)]])
-    D = np.array([x1, y1, z_values[int((row + 1) * SIZE + col + 1)]])
+    D = np.array([x0, y1, z_values[int((row + 1) * SIZE + col)]])
+    C = np.array([x1, y1, z_values[int((row + 1) * SIZE + col + 1)]])
     # print(f"A: {A}, B: {B}, C: {C}, D: {D}")
 
     # determine in which triangle of the cell the point is
     if (x - x0) * (y1 - y0) > (y - y0) * (x1 - x0):
         # Triangle ABC
         v0, v1, v2 = A, B, C
+        # print("ABC")
     else:
         # Triangle BCD
-        v0, v1, v2 = B, D, C
+        v0, v1, v2 = D, A, C
+        # print("DAC")
+    return v0, v1, v2
+
+def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
+    '''Interpolates the height of a point using barycentric interpolation.'''
+    x,y = point[0], point[1]
+    v0, v1, v2 = get_triangle_of_grid_point(point, z_values, SIZE, x_min, x_max)
     
     # compute the barycentric coordinates
     l1 = ((v1[1] - v2[1]) * (x - v2[0]) + (v2[0] - v1[0]) * (y - v2[1])) / ((v1[1] - v2[1]) * (v0[0] - v2[0]) + (v2[0] - v1[0]) * (v0[1] - v2[1]))
@@ -121,24 +130,25 @@ def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
     l3 = 1 - l1 - l2
 
     # interpolate the height of the point
-    z = l1 * A[2] + l2 * B[2] + l3 * C[2]
+    z = l1 * v0[2] + l2 * v1[2] + l3 * v2[2]
     return z
 
 def calculate_triangle_centroid(points):
     '''Calculates the centroid of a triangle given its vertices.'''
-    x = (points[0][0] + points[1][0] + points[2][0]) / 3
-    y = (points[0][1] + points[1][1] + points[2][1]) / 3
-    return (x, y)
+    if type(points) != isinstance(points, np.ndarray):
+        points = np.array(points)
+    centroid = np.mean(points, axis=0)
+    return centroid
 
 if __name__ == "__main__":
     # test the functions
     point = (0, 0)
     polygon = [(0, 0), (0, 1), (1, 1), (1, 0)]
-    print(isInsidePolygon(point, polygon))
+    print(isInsidePolygon2D(point, polygon))
 
     point = (0.5, 0.5)
     polygon = [(0, 0), (0, 1), (1, 1), (1, 0)]
-    print(isInsidePolygon(point, polygon))
+    print(isInsidePolygon2D(point, polygon))
 
     point = np.array([0.5, 0.5])
     z_values = np.random.rand(100)
