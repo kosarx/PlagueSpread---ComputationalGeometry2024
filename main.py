@@ -726,10 +726,11 @@ from vvrpywork.shapes import (
 from noise import pnoise2
 from time import time
 from tqdm import tqdm
+# import pickle
 
 class PlagueSpread3D(Scene3D):
     def __init__(self, WIDTH, HEIGHT):
-        super().__init__(WIDTH, HEIGHT, "Lab5", output=True, n_sliders=5)
+        super().__init__(WIDTH, HEIGHT, "Lab5", output=True, n_sliders=2)
         self._scenario_mode_init()
 
         self.scenario_parameters_init()
@@ -739,6 +740,7 @@ class PlagueSpread3D(Scene3D):
         self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1)
         centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update = self.perform_file_checks()
         self.calculate_centroids(centroids_need_update)
+        self.create_kd_tree()
         self.create_adjacency_matrix(adj_need_update)
         self.create_distances_matrix(dist_need_update) # centroid distances matrix is the graph for Dijkstra
         self.create_shortest_paths_matrix(short_paths_need_update)
@@ -769,8 +771,6 @@ class PlagueSpread3D(Scene3D):
         
 
     def _check_grid_mismatch(self, idx):
-        ## ---- PLACE THIS WHEN TRY EXCEPT FAILS IN GEODESIC DISTANCE ---- ##
-        ######################################################################
         '''Check if get_triangle_of_grid_point and self.triangle_indices are consistent.'''
         console_log(f"{idx} triangle indices: {self.triangle_indices[idx]}")
         console_log(f"{idx} triangle {self.grid.points[self.triangle_indices[idx][0]]}, {self.grid.points[self.triangle_indices[idx][1]]}, {self.grid.points[self.triangle_indices[idx][2]]}")
@@ -825,7 +825,7 @@ class PlagueSpread3D(Scene3D):
 
         # Combine x, y, and z coordinates
         grid = np.column_stack([grid_x_flat, grid_y_flat, z_values])
-        grid = PointSet3D(grid, size=1, color=Color.GRAY)
+        grid = PointSet3D(grid, size=1, color=self.GRID_COLOR)
         self.grid = grid
         self.addShape(self.grid, "grid")
 
@@ -833,7 +833,6 @@ class PlagueSpread3D(Scene3D):
         '''Triangulates the grid to form a mesh.'''
         list_of_indexed_triangles = []
         for i, point in enumerate(grid):
-            x, y, z = point
             next = i + 1
             upper = i - size
             diagonal = i + size + 1
@@ -851,7 +850,7 @@ class PlagueSpread3D(Scene3D):
             for j in range(3):
                 line_indices.append((triangle_index[j], triangle_index[(j + 1) % 3]))
 
-        lineset = LineSet3D(grid, line_indices, color=Color.GRAY)
+        lineset = LineSet3D(grid, line_indices, color=self.GRID_COLOR)
         # add the lineset to the scene
         self.addShape(lineset, "grid_lines")
 
@@ -908,6 +907,22 @@ class PlagueSpread3D(Scene3D):
             console_log("Centroids do not exist, grid hasn't changed.")
             update_centroids = True
 
+        '''DEPRECATED
+        console_log("Checking if the centroid-to-triangle-index mapping exists...")
+        map_file_path = os.path.join(path, "centroid_to_triangle_index_map.pkl")
+
+        # if we don't need to update the centroids, check if the mapping exists
+        if not update_centroids:
+            if os.path.exists(map_file_path):
+                console_log("Centroid-to-triangle-index mapping exists.")
+                update_centroids = False # all good, no need to update
+            else:
+                console_log("Centroid-to-triangle-index mapping does not exist.")
+                update_centroids = True # need to update
+        else:
+            pass # no need to check if the mapping exists if we need to update the shortest paths anyway
+            '''
+
         console_log("Checking if the adjacency matrix exists...")
         adj_file_path = os.path.join(path, "adjacency.npy")
 
@@ -948,29 +963,48 @@ class PlagueSpread3D(Scene3D):
 
         path = os.path.join(os.path.dirname(__file__), "plagueSpread", "resources")
         centroids_file_path = os.path.join(path, "centroids.npy")
+        map_file_path = os.path.join(path, "centroid_to_triangle_index_map.pkl")
         if not update:
             console_log("Centroids exist.")
-            console_log("Loading the centroids...")
+            console_log("Loading the centroids and mappings...")
             start_time = time()
             centroids = np.load(centroids_file_path)
+            # Load the map # DEPRECATED
+            # with open(map_file_path, 'rb') as map_file:
+            #     centroid_to_triangle_index_map = pickle.load(map_file)
             end_time = time()
-            console_log(f"Centroids loaded in {end_time - start_time} seconds.")
+            console_log(f"Centroids and mappings loaded in {end_time - start_time} seconds.")
         else:
             centroids = []
-            for triangle_index in tqdm(self.triangle_indices, desc="Calculating centroids"):
+            # centroid_to_triangle_index_map = {} # DEPRECATED
+            for i, triangle_index in enumerate(tqdm(self.triangle_indices, desc="Calculating centroids")):
                 triangle = [self.grid.points[triangle_index[0]], self.grid.points[triangle_index[1]], self.grid.points[triangle_index[2]]]
                 centroid = calculate_triangle_centroid(triangle)
                 centroids.append(centroid)
+                # centroid_to_triangle_index_map[tuple(centroid)] = i # DEPRECATED
             centroids = np.array(centroids)
-            console_log("Saving the centroids...")
+            console_log("Saving the centroids and mappings...")
             start_time = time()
             np.save(centroids_file_path, centroids)
+            # Save the map # DEPRECATED
+            # with open(map_file_path, 'wb') as map_file:
+            #     pickle.dump(centroid_to_triangle_index_map, map_file)
             end_time = time()
-            console_log(f"Centroids saved in {end_time - start_time} seconds.")
+            console_log(f"Centroids and mappings saved in {end_time - start_time} seconds.")
 
         console_log(f"Shape of the centroids array: {centroids.shape}")
         self.centroids = centroids
+        # self.centroid_to_triangle_index_map = centroid_to_triangle_index_map # DEPRECATED
         return centroids
+    
+    def create_kd_tree(self):
+        '''Creates a KD-Tree for quick nearest neighbor search of the centroids.'''
+        console_log("Creating the KD-Tree...")
+        start_time = time()
+        self.kd_centroid_root = KdNode.build_kd_node(self.centroids)
+        end_time = time()
+        console_log(f"KD-Tree created in {end_time - start_time} seconds.")
+        return self.kd_centroid_root
 
     def calculate_adjacency_matrix(self):
         '''Calculates the adjacency matrix for the grid.'''
@@ -1113,6 +1147,7 @@ class PlagueSpread3D(Scene3D):
 
     @world_space
     def on_mouse_press(self, x, y, button, modifiers):
+        console_log(f"Mouse pressed at ({x}, {y})")
         self.my_mouse_pos.x = x
         self.my_mouse_pos.y = y
         self.my_mouse_pos.color = Color.MAGENTA
@@ -1127,6 +1162,7 @@ class PlagueSpread3D(Scene3D):
         self.my_mouse_pos.color = [1, 1, 1, 0]
 
         # if the mouse is released within the bound...
+        console_log(f"Mouse released at ({x}, {y})")
         if self.within_bound(x, y):
             # if the right mouse button was released...
             if button == Mouse.MOUSE2 and modifiers & Key.MOD_SHIFT:
@@ -1282,6 +1318,7 @@ class PlagueSpread3D(Scene3D):
         self.COMPUTE_WITH_VORONOI = False
 
         # colors
+        self.GRID_COLOR = Color.GRAY
         self.healthy_population_color = Color.BLUE
         self.infected_population_color = Color.YELLOW
         self.healthy_wells_color = Color.GREEN
@@ -1352,10 +1389,12 @@ class PlagueSpread3D(Scene3D):
 
         # wells point cloud
         self.wells_pcd_name = "Wells"
-        self.wells_pcd = PointSet3D(color=self.healthy_wells_color)
+        self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
         self.adjust_height_of_points(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
+        # initialize the kd-tree for well selection
+        self.kd_wells_root = KdNode.build_kd_node(self.wells_pcd.points)
 
         self.infect_wells(self.ratio_of_infected_wells)
 
@@ -1378,10 +1417,12 @@ class PlagueSpread3D(Scene3D):
 
         # wells point cloud
         self.wells_pcd_name = "Mini Wells"
-        self.wells_pcd = PointSet3D(color=self.healthy_wells_color)
+        self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
         self.adjust_height_of_points(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
+        # initialize the kd-tree for well selection
+        self.kd_wells_root = KdNode.build_kd_node(self.wells_pcd.points)
 
         self.infect_wells(self.ratio_of_infected_wells)
 
@@ -1469,8 +1510,9 @@ class PlagueSpread3D(Scene3D):
         '''
         console_log(f"Entering remove_single_well with index {index}")
 
-    def geodesic_distance(self, start:Point3D|np.ndarray|list|tuple, end:Point3D|np.ndarray|list|tuple):
-        '''Calculates the geodesic distance between two points on the grid.'''
+    def _geodesic_distance_naive(self, start:Point3D|np.ndarray|list|tuple, end:Point3D|np.ndarray|list|tuple):
+        '''Calculates the geodesic distance between two points on the grid naively, by identifying the triangles in
+        which the start and end points are located, and searching for the index linearly in the triangle_indices list.''' 
         if isinstance(start, Point3D):
             start = np.array([start.x, start.y, start.z])
         if isinstance(end, Point3D):
@@ -1490,8 +1532,7 @@ class PlagueSpread3D(Scene3D):
         if np.array_equal(starting_triangle_vertices, ending_triangle_vertices):
             # if the start and end points are in the same triangle, return the euclidean distance between them
             return np.linalg.norm(start - end)
-        # console_log(f"starting point {start}, ending point {end}")
-        # console_log(f"Starting triangle vertices: {starting_triangle_vertices}, Ending triangle vertices: {ending_triangle_vertices}")
+        
         # find the index of the starting and ending triangle in the triangle_indices list
         starting_triangle_found, ending_triangle_found = False, False
         for i, triangle_index in enumerate(self.triangle_indices):
@@ -1532,6 +1573,107 @@ class PlagueSpread3D(Scene3D):
         total_distance = geodesic_distance + start_distance + end_distance
         return total_distance
     
+    def geodesic_distance(self, start:Point3D|np.ndarray|list|tuple, end:Point3D|np.ndarray|list|tuple):
+        '''Calculates the geodesic distance between two points on the grid using the centroid k-d tree.'''
+        if isinstance(start, Point3D):
+            start = np.array([start.x, start.y, start.z])
+        if isinstance(end, Point3D):
+            end = np.array([end.x, end.y, end.z])
+        if isinstance(start, (list, tuple)):
+            start = np.array(start)
+        if isinstance(end, (list, tuple)):
+            end = np.array(end)
+
+        # get the nearest centroid to the start point
+        # Since we're dealing with a grid and smooth perlin noise, 
+        # we can assume that the nearest centroid to the start point is the centroid of the triangle in which the start point is located
+        start_centroid_node = KdNode.nearestNeighbor(start, self.kd_centroid_root)
+        start_centroid = start_centroid_node.point
+        # start_triangle_index_from_map = self.centroid_to_triangle_index_map.get(tuple(start_centroid))
+        start_triangle_index = np.where(np.all(self.centroids == start_centroid, axis=1))[0][0]
+        # get the nearest centroid to the end point
+        end_centroid = KdNode.nearestNeighbor(end, self.kd_centroid_root)
+        end_centroid = end_centroid.point
+        # end_triangle_index = self.centroid_to_triangle_index_map.get(tuple(end_centroid))
+        end_triangle_index = np.where(np.all(self.centroids == end_centroid, axis=1))[0][0]
+
+        # get the euclidean distance between the start point and the centroid of the triangle
+        start_distance = np.linalg.norm(start - start_centroid)
+        # get the euclidean distance between the end point and the centroid of the triangle
+        end_distance = np.linalg.norm(end - end_centroid)
+
+        # get the geodesic distance between the starting_centroid and the ending_centroid
+        geodesic_distance = self.shortest_paths_matrix[start_triangle_index][end_triangle_index]    #self.dijkstra.get_distance_from_to(starting_triangle_idx, ending_triangle_idx)
+        # add the euclidean distances to the geodesic distance
+        total_distance = geodesic_distance + start_distance + end_distance
+        return total_distance
+    
+    def geodesic_distance_to(self, start, end, start_centroid, start_triangle_index):
+        '''Calculates the geodesic distance between two points on the grid using the centroid k-d tree,
+        assuming the start centroid and triangle index are already known.'''
+        if isinstance(end, Point3D):
+            end = np.array([end.x, end.y, end.z])
+        elif isinstance(end, (list, tuple)):
+            end = np.array(end)
+
+        # get the nearest centroid and triangle index for the end point
+        # Since we're dealing with a grid and smooth perlin noise, 
+        # we can assume that the nearest centroid to the start point is the centroid of the triangle in which the start point is located
+        end_centroid_node = KdNode.nearestNeighbor(end, self.kd_centroid_root)
+        end_centroid = end_centroid_node.point
+        end_triangle_index = np.where(np.all(self.centroids == end_centroid, axis=1))[0][0]
+
+        start_distance = np.linalg.norm(start - start_centroid)
+        end_distance = np.linalg.norm(end - end_centroid)
+        geodesic_distance = self.shortest_paths_matrix[start_triangle_index][end_triangle_index]
+
+        total_distance = geodesic_distance + start_distance + end_distance
+        return total_distance
+        
+    def find_closest_well_index_linear(self, person:Point3D|np.ndarray|list|tuple, wells:np.ndarray, wells_triangle_indices:np.ndarray):
+        if isinstance(person, Point3D):
+            person = np.array([person.x, person.y, person.z])
+        elif isinstance(person, (list, tuple)):
+            person = np.array(person)
+
+        person_centroid_node = KdNode.nearestNeighbor(person, self.kd_centroid_root)
+        person_centroid = person_centroid_node.point
+        person_triangle_index = np.where(np.all(self.centroids == person_centroid, axis=1))[0][0]
+
+        # get the euclidean distance between the person and the centroid of the triangle
+        person_to_centroid_distance = np.linalg.norm(person - person_centroid)
+
+        # min_distance = np.inf
+        # closest_well_index = -1
+
+        # for j, well in enumerate(wells):
+        #     distance = self.geodesic_distance_to(person, well, person_centroid, person_triangle_index)
+        #     if distance < min_distance:
+        #         min_distance = distance
+        #         closest_well_index = j
+
+        # for all the wells, calculate the euclidean distance between the well and the centroid of the triangle
+        # get the centroids of the triangles in which the wells are located
+        wells_centroids = self.centroids[wells_triangle_indices]
+        # calculate the euclidean distances between the wells and the centroids of the triangles
+        wells_to_centroids_distances = np.linalg.norm(wells - wells_centroids, axis=1)
+        # get the shortest distances between the person and the wells
+        shortest_distances_to_wells = self.shortest_paths_matrix[person_triangle_index, wells_triangle_indices]
+        # calculate the total distances
+        total_distances = person_to_centroid_distance + shortest_distances_to_wells + wells_to_centroids_distances
+
+        # we only need the closest well
+        closest_well_index = np.argsort(total_distances)[0]
+        
+        return closest_well_index
+    
+    def _find_closest_well_index_kd_tree(self, person:Point3D|np.ndarray|list|tuple, wells:np.ndarray):
+        '''Finds the index of the closest well to the person using a k-d tree, euclidean distance.'''
+        # get the nearest well to the person
+        closest_well_node = KdNode.nearestNeighbor(person, self.kd_wells_root)
+        closest_well_index = np.where(np.all(wells == closest_well_node.point, axis=1))[0][0]
+        return closest_well_index
+        
     def find_infected_people_with_voronoi(self):
         '''Finds the people infected by the wells, using Voronoi diagram.'''
         ...
@@ -1547,16 +1689,17 @@ class PlagueSpread3D(Scene3D):
         wells_nparray = np.array(self.wells_pcd.points)
         
         if not self.COMPUTE_WITH_VORONOI:
+             # for all the wells, get the index of the nearest centroid
+            wells_triangle_index = []
+            for well in wells_nparray:
+                well_centroid_node = KdNode.nearestNeighbor(well, self.kd_centroid_root)
+                wells_centroid = well_centroid_node.point
+                well_triangle_index = np.where(np.all(self.centroids == wells_centroid, axis=1))[0][0]
+                wells_triangle_index.append(well_triangle_index)
+    
             # for every person in the population, check if the closest well to them is infected
             for i, person in enumerate(tqdm(population_nparray, desc="For all infected people")):
-                min_distance = np.inf
-                for j, well in enumerate(wells_nparray):
-                    # get the geodesic distance between the person and the well
-                    distance = self.geodesic_distance(person, well)
-                    # if the distance is less than the minimum distance, update the minimum distance
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_well_index = j
+                closest_well_index = self.find_closest_well_index_linear(person, wells_nparray, wells_triangle_index) #self._find_closest_well_index_kd_tree(person, wells_nparray) #
                 # if the closest well is infected, infect the person
                 if closest_well_index in self.infected_wells_indices:
                     population_color_nparray[i] = self.infected_population_color
@@ -1571,14 +1714,14 @@ class PlagueSpread3D(Scene3D):
 
         self.terminal_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
     
-    def get_geodesic_distances_from_to_many(self, person, wells, wells_triangle_indices):
+    def get_geodesic_distances_from_to_many_naive(self, person, wells, wells_triangle_indices):
         '''Calculates the geodesic distances between a person and many wells.'''
 
         # get the triangle in which the person is located
         starting_triangle_vertices = get_triangle_of_grid_point(person, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
         for i, triangle_index in enumerate(self.triangle_indices):
             grid_points = self.grid.points[triangle_index]
-            if np.array_equal(grid_points, self.grid.points[starting_triangle_vertices]):
+            if np.array_equal(grid_points, starting_triangle_vertices):
                 starting_triangle_idx = i
                 break
 
@@ -1593,9 +1736,7 @@ class PlagueSpread3D(Scene3D):
             well_to_centroid_distance = np.linalg.norm(well - ending_centroid)
             wells_to_centroids_distances.append(well_to_centroid_distance)
 
-        self.dijkstra.calculate_shortest_paths_from_vertex(starting_triangle_idx)
-        shortest_distances_to_all = self.dijkstra.get_distances()
-        shortest_distances_to_wells = shortest_distances_to_all[wells_triangle_indices]
+        shortest_distances_to_wells = self.shortest_paths_matrix[starting_triangle_idx][wells_triangle_indices]
 
         # for all the wells, calculate the total distance
         total_distances = np.zeros(len(wells))
@@ -1610,9 +1751,83 @@ class PlagueSpread3D(Scene3D):
         third_closest_well_index = sorted_wells[2]
 
         return closest_well_index, second_closest_well_index, third_closest_well_index
+    
+    def find_stochastic_infected_linear(self, population_nparray, population_color_nparray, wells_nparray):
+        '''Infects people by the wells in a stochastic manner.'''
+        # for all wells, get the triangle in which the well is located
+        wells_triangles_indices = []
+        for well in wells_nparray:
+            triangle_vertices = get_triangle_of_grid_point(well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+            triangle_vertices = np.array(triangle_vertices)
+            for i, triangle_index in enumerate(self.triangle_indices):
+                grid_points = self.grid.points[triangle_index]
+                if np.array_equal(grid_points, triangle_vertices):
+                    wells_triangles_indices.append(i)
+                    break
+        if len(wells_triangles_indices) != len(wells_nparray):
+            raise ValueError("Not all wells have a corresponding triangle index.")            
 
+        # for every person in the population, check if the closest well to them is infected
+        for i, person in enumerate(tqdm(population_nparray, desc="For all infected people")):
+            # get the geodesic distances between the person and all the wells
+            closest_wells = self.get_geodesic_distances_from_to_many_naive(person, wells_nparray, wells_triangles_indices)
+            choice = np.random.choice(closest_wells, p=[self.P1, self.P2, self.P3])
+            if choice in self.infected_wells_indices:
+                self.infected_people_indices.append(i)
+                population_color_nparray[i] = self.infected_population_color
+            else:
+                population_color_nparray[i] = self.healthy_population_color
 
+        return population_color_nparray
+    
+    def get_geodesic_distances_from_to_many(self, person, wells, wells_triangle_indices):
+        '''Calculates the geodesic distances between a person and many wells.'''
+        
+        # get the nearest centroid to the person
+        person_centroid_node = KdNode.nearestNeighbor(person, self.kd_centroid_root)
+        person_centroid = person_centroid_node.point
+        person_triangle_index = np.where(np.all(self.centroids == person_centroid, axis=1))[0][0]
 
+        # get the euclidean distance between the person and the centroid of the triangle
+        person_to_centroid_distance = np.linalg.norm(person - person_centroid)
+
+        # for all the wells, calculate the euclidean distance between the well and the centroid of the triangle
+        # get the centroids of the triangles in which the wells are located
+        wells_centroids = self.centroids[wells_triangle_indices]
+        # calculate the euclidean distances between the wells and the centroids of the triangles
+        wells_to_centroids_distances = np.linalg.norm(wells - wells_centroids, axis=1)
+        # get the shortest distances between the person and the wells
+        shortest_distances_to_wells = self.shortest_paths_matrix[person_triangle_index, wells_triangle_indices]
+        # calculate the total distances
+        total_distances = person_to_centroid_distance + shortest_distances_to_wells + wells_to_centroids_distances
+
+        # we only need the 3 closest wells
+        closest_wells_indices = np.argsort(total_distances)[:3]
+
+        return closest_wells_indices
+
+    def find_stochastic_infected_kd_tree(self, population_nparray, population_color_nparray, wells_nparray):
+        '''Infects people by the wells in a stochastic manner using the k-d tree.'''
+        # for all the wells, get the index of the nearest centroid
+        wells_triangle_index = []
+        for well in wells_nparray:
+            well_centroid_node = KdNode.nearestNeighbor(well, self.kd_centroid_root)
+            wells_centroid = well_centroid_node.point
+            well_triangle_index = np.where(np.all(self.centroids == wells_centroid, axis=1))[0][0]
+            wells_triangle_index.append(well_triangle_index)
+
+        # for every person in the population, find the 3 closest wells to them
+        for i, person in enumerate(tqdm(population_nparray, desc="For all infected people")):
+            closest_wells = self.get_geodesic_distances_from_to_many(person, wells_nparray, wells_triangle_index)
+            choice = np.random.choice(closest_wells, p=[self.P1, self.P2, self.P3])
+            if choice in self.infected_wells_indices:
+                self.infected_people_indices.append(i)
+                population_color_nparray[i] = self.infected_population_color
+            else:
+                population_color_nparray[i] = self.healthy_population_color
+
+        return population_color_nparray
+        
     def find_infected_people_stochastic(self):
         '''Finds the people infected by the wells in a stochastic manner.'''
         
@@ -1623,25 +1838,10 @@ class PlagueSpread3D(Scene3D):
         population_color_nparray = np.array(self.population_pcd.colors)
         wells_nparray = np.array(self.wells_pcd.points)
 
-        # for all wells, get the triangle in which the well is located
-        wells_triangles_indices = []
-        for well in wells_nparray:
-            triangle_vertices = get_triangle_of_grid_point(well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
-            for i, triangle_index in enumerate(self.triangle_indices):
-                if np.array_equal(triangle_index, triangle_vertices):
-                    wells_triangles_indices.append(i)
-                    break            
+        # slow
+        # population_color_nparray = self.find_stochastic_infected_linear(population_nparray, population_color_nparray, wells_nparray)
 
-        # for every person in the population, check if the closest well to them is infected
-        for i, person in enumerate(population_nparray):
-            # get the geodesic distances between the person and all the wells
-            closest_wells = self.get_geodesic_distances_from_to_many(person, wells_nparray, wells_triangles_indices)
-            choice = np.random.choice(closest_wells, p=[self.P1, self.P2, self.P3])
-            if choice in self.infected_wells_indices:
-                self.infected_people_indices.append(i)
-                population_color_nparray[i] = self.infected_population_color
-            else:
-                population_color_nparray[i] = self.healthy_population_color
+        population_color_nparray = self.find_stochastic_infected_kd_tree(population_nparray, population_color_nparray, wells_nparray)
 
         self.population_pcd.colors = population_color_nparray
         self.updateShape(self.population_pcd_name)
