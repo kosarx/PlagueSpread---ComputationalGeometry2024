@@ -1149,6 +1149,75 @@ class PointSet2D(ShapeSet):
         else:
             raise TypeError("Unsupported bound type")
         
+    def createRandomWeighted(self, bound, num_points, seed=None, color:ColorType=(0, 0, 0), rois=None, rois_radii=None, rois_weights=[2], decrease_factor=0.5):
+        '''Appends random points to the pointset.
+
+        Generates random points inside a region weightedly and appends
+        them to the pointset.
+        
+        Args:
+            bound: The area inside of which the random points will be
+                generated. Should be either a Rectangle2D or Circle2D.
+            num_points: How many points to generate.
+            seed: An optional seed for the RNG.
+            color: The color of the generated points.
+            rois: List of regions of interest (subregions) where points should be sampled more frequently.
+            roi_weight: The weight factor by which the ROIs should be favored for point generation.
+            decrease_factor: Factor by which the density of points around ROIs decreases.
+        '''
+        if len(self._points) > 0:
+            print('Point Set is not empty; random points will be appended to the existing ones.')
+
+        if seed:
+            random.seed(seed)
+
+        def generate_random_point_in_rectangle(rect):
+            x = random.uniform(rect.x_min, rect.x_max)
+            y = random.uniform(rect.y_min, rect.y_max)
+            return x, y
+
+        def generate_random_point_in_circle(circle):
+            r = circle.radius * random.uniform(0, 1) ** .5
+            theta = random.uniform(0, 1) * 2 * np.pi
+            x = circle.x + r * np.cos(theta)
+            y = circle.y + r * np.sin(theta)
+            return x, y
+
+        def generate_random_point(boundary):
+            if isinstance(boundary, Rectangle2D):
+                return generate_random_point_in_rectangle(boundary)
+            elif isinstance(boundary, Circle2D):
+                return generate_random_point_in_circle(boundary)
+            else:
+                raise TypeError("Unsupported bound type")
+
+        def generate_random_point_around_roi(roi, radius):
+            # Apply decrease_factor to control density around the ROI
+            adjusted_radius = radius * (random.uniform(0, 1) ** decrease_factor)
+            theta = random.uniform(0, 1) * 2 * np.pi
+            x = roi[0] + adjusted_radius * np.cos(theta)
+            y = roi[1] + adjusted_radius * np.sin(theta)
+            return x, y
+
+        for _ in range(num_points):
+            if rois is not None:
+                selection = random.randint(0, len(rois) - 1)
+                if len(rois_weights) == 1:
+                    roi_weight = rois_weights[0]
+                else:
+                    roi_weight = rois_weights[selection]
+                if random.random() < roi_weight / (roi_weight + 1):
+                    roi = rois[selection]
+                    radius = rois_radii[selection]
+                    x, y = generate_random_point_around_roi(roi, radius)
+                else:
+                    x, y = generate_random_point(bound)
+            else:
+                x, y = generate_random_point(bound)
+
+            self._points.append([x, y])
+            self._colors.append([*color, 1] if len(color) == 3 else [*color])
+        
     def remove(self, index:int):
         '''Removes a point from the pointset.
 

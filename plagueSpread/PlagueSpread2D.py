@@ -164,6 +164,10 @@ class PlagueSpread2D(Scene2D):
         if symbol == Key.N:
             self.POPULATION -= 10
             self.reset_scene()
+        # toggle between dense regions of the population
+        if symbol == Key.W:
+            self.DENSE_REGIONS = not self.DENSE_REGIONS
+            self.reset_scene()
         # toggle between random selection and stochastic selection
         if symbol == Key.R:
             self.RANDOM_SELECTION = not self.RANDOM_SELECTION
@@ -237,6 +241,7 @@ class PlagueSpread2D(Scene2D):
 
         # logic, controllers    
         self.RANDOM_SELECTION = False
+        self.DENSE_REGIONS = False
         # self.VORONOI_ACTIVE = False
         self.VORONOI_VISIBLE = False
         self.COMPUTE_WITH_VORONOI = False
@@ -253,7 +258,8 @@ class PlagueSpread2D(Scene2D):
         print("--> Press UP to toggle between trial mode and normal mode.")
         print("--> Press RIGHT or LEFT to increase or decrease the number of wells.")
         print("--> Press M or N to increase or decrease the population.")
-        print("--> Press 1 or 2 to set the scenario to version 1 or 2.")
+        print("--> Press 1 or 2 or 3 to set the scenario to version 1 or 2 or 3.")
+        print("--> Press W to toggle dense regions of the population.")
         print("--> Press V to toggle the Voronoi diagram.")
         print("--> Press SHIFT + V to use the Voronoi diagram for computations.")
         print("--> Press LEFT MOUSE BUTTON to add or remove a well.")
@@ -294,7 +300,24 @@ class PlagueSpread2D(Scene2D):
         # population point cloud
         self.population_pcd_name = "Population" 
         self.population_pcd = PointSet2D(color=self.healthy_population_color, size=0.7)
-        self.population_pcd.createRandom(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color)
+        if not self.DENSE_REGIONS:
+            self.population_pcd.createRandom(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color)
+        else:
+            # regions of interests
+            rois = np.array([[-0.5, -0.5], [0.5, 0.5]])
+            if self.POPULATION <= 1000:
+                weights = np.array([0.6, 0.4])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.5
+            elif self.POPULATION <= 10000:
+                weights = np.array([0.5, 0.5])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.8
+            elif self.POPULATION <= 30000:
+                weights = np.array([0.7, 0.7])
+                rois_radii = np.array([0.3, 0.4])
+                decrease_factor = 2
+            self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         self.addShape(self.population_pcd, self.population_pcd_name)
         
         console_log(f"Population point cloud is {len(self.population_pcd.points)} points")
