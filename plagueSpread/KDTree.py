@@ -373,6 +373,48 @@ class KdNode:
 
         return nodes
     
+    @staticmethod
+    def insert(root: 'KdNode', new_point: np.array) -> 'KdNode':
+        """
+        Insert a new point into the k-d tree.
+
+        Args:
+        - root (KdNode): The root of the k-d tree.
+        - new_point (np.array): The new point to insert.
+
+        Returns:
+        - KdNode: The root of the updated k-d tree.
+        """
+        def _insert(node: 'KdNode', point: np.array, level: int) -> 'KdNode':
+            """
+            Recursively insert a new point into the k-d tree.
+
+            Args:
+            - node (KdNode): The current node being visited.
+            - point (np.array): The new point to insert.
+            - level (int): The current level in the k-d tree.
+
+            Returns:
+            - KdNode: The updated node after insertion.
+            """
+            if node is None:
+                print(f"Inserting point {point} at level {level}")
+                return KdNode(point)
+
+            axis = level % 3
+            print(f"Visiting node with point {node.point} at level {level}, axis {axis}")
+
+            if point[axis] < node.point[axis]:
+                print(f"Going left from node {node.point}")
+                node.left_child = _insert(node.left_child, point, level + 1)
+            else:
+                print(f"Going right from node {node.point}")
+                node.right_child = _insert(node.right_child, point, level + 1)
+
+            return node
+
+        return _insert(root, new_point, 0)
+    
 
 if __name__ == "__main__":
     # Example usage of the KdNode class

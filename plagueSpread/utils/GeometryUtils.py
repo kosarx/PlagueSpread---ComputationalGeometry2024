@@ -2,6 +2,13 @@
 - LineEquation2D: Represents a 2D line equation.
 - isInsidePolygon: Returns True if the point is inside the polygon.
 - barycentric_interpolate_height: Interpolates the height of a point using barycentric interpolation given a grid.'''
+import os
+
+if __name__ == "__main__":
+    current_path = os.path.dirname(os.path.realpath(__file__))
+
+    import sys
+    sys.path.append(os.path.join(current_path, "..", ".."))
 
 # standard imports
 import numpy as np
@@ -187,7 +194,7 @@ if __name__ == "__main__":
     polygon = [(0, 0), (0, 1), (1, 1), (1, 0)]
     print(isInsidePolygon2D(point, polygon))
 
-    point = np.array([0.5, 0.5])
+    point = np.array([[0.5, 0.5]])
     z_values = np.random.rand(100)
     SIZE = 10
     x_min, x_max = -1, 1

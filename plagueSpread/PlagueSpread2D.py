@@ -133,6 +133,11 @@ class PlagueSpread2D(Scene2D):
             self.POPULATION = 10000 if not self.TRIAL_MODE else 10
             self.WELLS = 30 if not self.TRIAL_MODE else 5
             self.reset_scene()
+
+        def version_3():
+            self.POPULATION = 30000 if not self.TRIAL_MODE else 15
+            self.WELLS = 45 if not self.TRIAL_MODE else 7
+            self.reset_scene()
         
         # print the scenario parameters
         if symbol == Key.BACKSPACE:
@@ -214,6 +219,8 @@ class PlagueSpread2D(Scene2D):
             version_1()
         if symbol == Key._2:
             version_2()
+        if symbol == Key._3:
+            version_3()
     
     def scenario_parameters_init(self):
         self.bbx =[[-0.9, -0.9], [0.9, 0.9]]

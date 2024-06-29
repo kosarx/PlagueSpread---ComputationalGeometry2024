@@ -81,7 +81,7 @@ class PlagueSpread3D(Scene3D):
         # self._check_grid_mismatch(685) if self.DEBUG else None
         # self._check_grid_mismatch(686) if self.DEBUG else None
         # self._check_grid_mismatch(117) if self.DEBUG else None
-        
+        self.addShape(Point3D([0.0, 1.0, 0.0], size=2, color=Color.RED), "test_point")
 
     def _check_grid_mismatch(self, idx):
         '''Check if get_triangles_of_grid_points and self.triangle_indices are consistent.'''
@@ -459,58 +459,101 @@ class PlagueSpread3D(Scene3D):
         # console_log("---")
 
     @world_space
-    def on_mouse_press(self, x, y, button, modifiers):
-        console_log(f"Mouse pressed at ({x}, {y})")
-        self.my_mouse_pos.x = x
-        self.my_mouse_pos.y = y
-        self.my_mouse_pos.color = Color.MAGENTA
-        self.my_mouse_pos.size = 1
-        self.updateShape("mouse")
+    def on_mouse_press(self, x, y, z, button, modifiers):
+        if (button == Mouse.MOUSELEFT or button == Mouse.MOUSERIGHT) and modifiers & Key.MOD_SHIFT:
+            if np.isinf(z) or np.isinf(x) or np.isinf(y):
+                console_log("Mouse pressed outside the bounds, ", x, y, z)
+                return
+            self.my_mouse_pos.x = x
+            self.my_mouse_pos.y = y
+            self.my_mouse_pos.z = z
+            # self.my_mouse_pos.color = Color.WHITE
+            self.my_mouse_pos.color = [1, 1, 1, 0]
 
-    @world_space
-    def on_mouse_release(self, x, y, button, modifiers):
-        self.my_mouse_pos.x = x
-        self.my_mouse_pos.y = y
-        # self.my_mouse_pos.color = Color.WHITE
-        self.my_mouse_pos.color = [1, 1, 1, 0]
-
-        # if the mouse is released within the bound...
-        console_log(f"Mouse released at ({x}, {y})")
-        if self.within_bound(x, y):
-            # if the right mouse button was released...
-            if button == Mouse.MOUSE2 and modifiers & Key.MOD_SHIFT:
-                # find the closest well to the mouse position
-                closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y]), axis=1))
-                # if its within a certain distance...
-                if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y])) < 0.05:
-                    # check if the closest well is not already infected
-                    if closest_well_index not in self.infected_wells_indices:
-                        # infect the closest well
-                        self.infect_single_well(closest_well_index)
-                        self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+            # if the mouse is released within the bound...
+            if self.within_bound(x, y):
+                console_log(f"Mouse released at ({x}, {y}, {z})")
+                # if the right mouse button was released...
+                if button == Mouse.MOUSERIGHT and modifiers & Key.MOD_SHIFT:
+                    # find the closest well to the mouse position
+                    closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
+                    # if its within a certain distance...
+                    if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
+                        # check if the closest well is not already infected
+                        if closest_well_index not in self.infected_wells_indices:
+                            # infect the closest well
+                            self.infect_single_well(closest_well_index)
+                            self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                        else:
+                            # disenfect the closest well
+                            self.disinfect_single_well(closest_well_index)
+                            self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                # else, if the left mouse button was released...
+                elif button == Mouse.MOUSELEFT and modifiers & Key.MOD_SHIFT:
+                    # find the closest well to the mouse position
+                    closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
+                    # if its within a certain distance...
+                    if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
+                        # remove the closest well
+                        self.remove_single_well(closest_well_index)
                     else:
-                        # disenfect the closest well
-                        self.disinfect_single_well(closest_well_index)
-                        self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-            # else, if the left mouse button was released...
-            elif button == Mouse.MOUSE1 and modifiers & Key.MOD_SHIFT:
-                # find the closest well to the mouse position
-                closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y]), axis=1))
-                # if its within a certain distance...
-                if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y])) < 0.05:
-                    # remove the closest well
-                    self.remove_single_well(closest_well_index)
-                else:
-                    # add a new well at the mouse position
-                    self.add_single_well(x, y)
-                self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-                self.resetVoronoi()
-                
-        self.updateShape("mouse")
+                        # add a new well at the mouse position
+                        self.add_single_well(x, y)
+                    self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                    self.resetVoronoi()
+                    
+            self.updateShape("mouse")
 
-    @world_space
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        self.on_mouse_press(x, y, buttons, modifiers)
+    # @world_space
+    # def on_mouse_release(self, x, y, z, button, modifiers):
+    #     if modifiers & Key.MOD_SHIFT:
+    #         if np.isinf(x) or np.isinf(y) or np.isinf(z):
+    #             return
+    #         self.my_mouse_pos.x = x
+    #         self.my_mouse_pos.y = y
+    #         self.my_mouse_pos.z = z
+    #         # self.my_mouse_pos.color = Color.WHITE
+    #         self.my_mouse_pos.color = [1, 1, 1, 0]
+
+    #         # if the mouse is released within the bound...
+    #         if self.within_bound(x, y):
+    #             console_log(f"Mouse released at ({x}, {y}, {z})")
+    #             # if the right mouse button was released...
+    #             if button == Mouse.MOUSERIGHT and modifiers & Key.MOD_SHIFT:
+    #                 # find the closest well to the mouse position
+    #                 closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
+    #                 # if its within a certain distance...
+    #                 if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
+    #                     # check if the closest well is not already infected
+    #                     if closest_well_index not in self.infected_wells_indices:
+    #                         # infect the closest well
+    #                         self.infect_single_well(closest_well_index)
+    #                         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+    #                     else:
+    #                         # disenfect the closest well
+    #                         self.disinfect_single_well(closest_well_index)
+    #                         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+    #             # else, if the left mouse button was released...
+    #             elif button == Mouse.MOUSELEFT and modifiers & Key.MOD_SHIFT:
+    #                 # find the closest well to the mouse position
+    #                 closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
+    #                 # if its within a certain distance...
+    #                 if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
+    #                     # remove the closest well
+    #                     self.remove_single_well(closest_well_index)
+    #                 else:
+    #                     # add a new well at the mouse position
+    #                     self.add_single_well(x, y)
+    #                 self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+    #                 self.resetVoronoi()
+                    
+    #         self.updateShape("mouse")
+
+    # @world_space
+    # def on_mouse_drag(self, x, y, z, dx, dy, button, modifiers):
+    #     if (button == Mouse.MOUSELEFT or button == Mouse.MOUSERIGHT) and modifiers & Key.MOD_SHIFT:
+    #         console_log(f"Mouse dragged at ({x}, {y}, {z})")
+    #         self.on_mouse_press(x, y, z, button, modifiers)
 
     def within_bound(self, x, y):
         '''Checks if the point (x, y) is within the bounding box.'''
@@ -528,6 +571,11 @@ class PlagueSpread3D(Scene3D):
             self.WELLS = 30 if not self.TRIAL_MODE else 5
             self.reset_scene()
         
+        def version_3():
+            self.POPULATION = 30000 if not self.TRIAL_MODE else 15
+            self.WELLS = 45 if not self.TRIAL_MODE else 7
+            self.reset_scene()
+
         # print the scenario parameters
         if symbol == Key.BACKSPACE:
             self._console_log_scenario()
@@ -612,6 +660,8 @@ class PlagueSpread3D(Scene3D):
             version_1()
         if symbol == Key._2:
             version_2()
+        if symbol == Key._3:
+            version_3()
 
     def scenario_parameters_init(self):
         self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 50, 80
@@ -755,8 +805,12 @@ class PlagueSpread3D(Scene3D):
         (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()) #if self.DEBUG else None
 
 
-    def adjust_height_of_points(self, pointset:PointSet3D):
+    def adjust_height_of_points(self, pointset:PointSet3D|np.ndarray|list|tuple):
         '''Adjusts the height of the points in the pointset using interpolation.'''
+        if isinstance(pointset, PointSet3D):
+            points_nparray = np.array(pointset.points)
+        if isinstance(pointset, (np.ndarray, list, tuple)):
+            points_nparray = np.array(pointset)
         
         # points_nparray = np.array(pointset.points)
         # for i in range(len(points_nparray)):
@@ -764,15 +818,15 @@ class PlagueSpread3D(Scene3D):
         #     points_nparray[i][2] = z
 
         # pointset.points = points_nparray 
-        points_nparray = np.array(pointset.points)
         
         # Vectorized call to the interpolation function
         heights = barycentric_interpolate_height(points_nparray, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
-        
         # Assign the interpolated heights to the points
         points_nparray[:, 2] = heights
 
-        pointset.points = points_nparray       
+        if isinstance(pointset, PointSet3D):
+            pointset.points = points_nparray
+        return points_nparray
 
     def infect_wells(self, ratio:float|None = 0.2, hard_number:int|None = None):
         ''' Infects a certain number of wells with the plague.
@@ -822,6 +876,23 @@ class PlagueSpread3D(Scene3D):
             The Point3D object of the infected well.
         '''
         console_log(f"Entering infect_single_well with index {index}")
+
+        index = int(index) # make sure the index is an integer, please typehinting at getPointAt --> numpy.int64
+
+        wells_color_nparray = np.array(self.wells_pcd.colors)
+        # if the well is not already infected, infect it
+        if not np.array_equal(wells_color_nparray[index], self.infected_wells_color):
+
+            wells_color_nparray[index] = self.infected_wells_color
+            # store the index of the infected well
+            self.infected_wells_indices.append(index)
+            # change the colors of the wells_pcd
+            self.wells_pcd.colors = wells_color_nparray
+            # update the colors of the wells_pcd
+            self.updateShape(self.wells_pcd_name)
+        console_log(f"Infected well with Point3D object {self.wells_pcd[index]}, value {self.wells_pcd.points[index]}, index {index}")
+        self.print(f"Infected well with index {index}")
+        return self.wells_pcd[index]
     
     def disinfect_single_well(self, index:int):
         ''' Disinfects a single well.
@@ -829,6 +900,23 @@ class PlagueSpread3D(Scene3D):
             index: The index of the well to disinfect.
         '''
         console_log(f"Entering disinfect_single_well with index {index}")
+
+        index = int(index) # make sure the index is an integer, please typehinting at getPointAt --> numpy.int64
+
+        wells_color_nparray = np.array(self.wells_pcd.colors)
+        # if the well is infected, disinfect it
+        if np.array_equal(wells_color_nparray[index], self.infected_wells_color):
+            wells_color_nparray[index] = self.healthy_wells_color
+            # remove the index of the infected well
+            self.infected_wells_indices.remove(index)
+            # change the colors of the wells_pcd
+            self.wells_pcd.colors = wells_color_nparray
+            # update the colors of the wells_pcd
+            self.updateShape(self.wells_pcd_name)
+
+        console_log(f"Disinfected well with Point2D object {self.wells_pcd[index]}, value {self.wells_pcd.points[index]}, index {index}")
+        self.print(f"Disinfected well with index {index}")
+        return self.wells_pcd[index]
 
     def add_single_well(self, x:int, y:int):
         '''Adds a single well to the scene.
@@ -838,12 +926,50 @@ class PlagueSpread3D(Scene3D):
         '''
         console_log(f"Entering add_single_well with x: {x}, y: {y}")
 
+        new_well = np.array([[x, y, 0]])
+        # find the height of the well
+        new_well[0][2] = barycentric_interpolate_height(new_well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        new_well = new_well.flatten()
+        console_log(f"Adjusted height of the new well: {new_well[2]}")
+        # add the well to the wells_pcd
+        self.WELLS += 1
+        self.wells_pcd.points = np.vstack((self.wells_pcd.points, new_well))
+        self.wells_pcd.colors = np.vstack((self.wells_pcd.colors, self.healthy_wells_color))
+        # add the well to the kd-tree
+        self.kd_wells_root = KdNode.build_kd_node(self.wells_pcd.points)
+        # update the shape
+        self.updateShape(self.wells_pcd_name)
+        self.terminal_log(f"New well added at {new_well}")
+        return new_well
+        
+
     def remove_single_well(self, index:int):
         '''Removes a single well from the scene.
         Args:
             index: The index of the well to remove.
         '''
         console_log(f"Entering remove_single_well with index {index}")
+
+        index = int(index) # make sure the index is an integer, please typehinting at getPointAt --> numpy.int64
+
+        # un-infect the well if it is infected
+        console_log(f"Removing well at index {index} from infected wells indices: {self.infected_wells_indices}")
+        self.infected_wells_indices = [i for i in self.infected_wells_indices if i != index]
+        self.terminal_log(f"Removed well at index {index} from infected wells indices: {self.infected_wells_indices}")
+        # update the rest of the indices to point to the correct wells
+        for i in range(len(self.infected_wells_indices)):
+            if self.infected_wells_indices[i] > index:
+                self.infected_wells_indices[i] -= 1
+        
+        # remove the well
+        self.WELLS -= 1
+        self.wells_pcd.points = np.delete(self.wells_pcd.points, index, axis=0)
+        self.wells_pcd.colors = np.delete(self.wells_pcd.colors, index, axis=0)
+        # rebuild the kd-tree
+        self.kd_wells_root = KdNode.build_kd_node(self.wells_pcd.points)
+        self.updateShape(self.wells_pcd_name)
+        self.terminal_log(f"Removed a well at index {index}")
+
 
     def _geodesic_distance_naive(self, start:Point3D|np.ndarray|list|tuple, end:Point3D|np.ndarray|list|tuple):
         '''Calculates the geodesic distance between two points on the grid naively, by identifying the triangles in
