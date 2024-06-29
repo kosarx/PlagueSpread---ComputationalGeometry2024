@@ -700,7 +700,7 @@ class PlagueSpread3D(Scene3D):
         # population point cloud
         console_log("Creating the population...")
         self.population_pcd_name = "Population"
-        self.population_pcd = PointSet3D(color=self.healthy_population_color, size=1)
+        self.population_pcd = PointSet3D(color=self.healthy_population_color, size=0.7)
         self.population_pcd.createRandom(self.bound, self.POPULATION, 42, self.healthy_population_color) # dislikes seed of self.population_pcd_name
         console_log(f"Adjusting the height of the population points...")
         self.adjust_height_of_points(self.population_pcd)
