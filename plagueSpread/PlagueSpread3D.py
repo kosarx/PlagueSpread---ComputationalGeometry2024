@@ -614,7 +614,7 @@ class PlagueSpread3D(Scene3D):
             version_2()
 
     def scenario_parameters_init(self):
-        self.GRID_SIZE = 60 # will create a grid of N x N points, choices: 20, 50, 80
+        self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 50, 80
         self.grid = None
         self.bbx =[[-1, -1, 0], [1, 1, 0]]
         self.bound = None
