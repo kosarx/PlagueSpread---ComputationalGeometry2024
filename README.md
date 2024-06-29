@@ -1,9 +1,9 @@
 # 3Δ Υπολογιστική Γεωμετρία & Όραση - Πανεπιστήμιο Πατρών 2024
 # Plague Spread
 Κοσμάς Αρχοντής 1084020
-![Scenario 2 GIF for descending probabilities. Denser](images/gif/version2.gif)
+![2D Scenario 2 GIF for descending probabilities](images/gif/version2.gif)
 
-![Scenario 1 GIF for descending probabilities. Less dense](images/gif/version1.gif)
+![3D Scenario 2 GIF for descending probabilities](images/gif/version3.gif)
 
 ## Ολοκληρωμένα Ερωτήματα:
 1. Δειγματοληψία πληθυσμού & πηγαδιών
@@ -18,7 +18,8 @@
 ## Οδηγίες Χρήσης
 1. Πρέπει να βρισκόμαστε στο σωστό anaconda περιβάλλον
 2. Τρέχουμε το main.py
-3. Αλληλεπιδρούμε με τη σκηνή μέσω τερματικού
+3. Διαλέγουμε τη 2Δ ή 3Δ σκηνή μέσω τερματικού
+3. Αλληλεπιδρούμε με την επιλεγμένη σκηνή μέσω τερματικού
 4. Με τα νούμερα 1, 2 αλλάζουμε στο αντίστοιχο σενάριο. Το σενάριο 2 είναι με περισσότερο πληθυσμό/πηγάδια.
 5. Με το πάνω βέλος εισερχόμαστε σε TRIAL MODE, χρήσιμο μόνο παρατήρηση συμπεριφοράς με μικρά νούμερα
 6. Με αριστερό κλικ ποντικιού προσθέτουμε/αφαιρούμε πηγάδι. Με δεξί μολύνουμε/απο-μολύνουμε πηγάδι
@@ -34,6 +35,7 @@
 --> Press M or N to increase or decrease the population.\
 --> Press 1 or 2 to set the scenario to version 1 or 2.\
 --> Press V to toggle the Voronoi diagram.\
+--> Press SHIFT + V to use the Voronoi diagram for computations.
 --> Press LEFT MOUSE BUTTON to add or remove a well.\
 --> Press RIGHT MOUSE BUTTON to infect or disinfect a well.\
 --> Press R to toggle between deterministic and stochastic scenario.\

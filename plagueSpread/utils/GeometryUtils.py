@@ -90,47 +90,84 @@ def isInsidePolygon2D(point, polygon):
 
 # for 3D scene
 
-def get_triangle_of_grid_point(point, z_values, SIZE, x_min, x_max):
-    x, y = point[0], point[1]
-    cell_size = (x_max - x_min)/(SIZE - 1)
+# def get_triangle_of_grid_point(point, z_values, SIZE, x_min, x_max):
+#     x, y = point[0], point[1]
+#     cell_size = (x_max - x_min)/(SIZE - 1)
 
-    col = np.floor((x+1) / cell_size)
-    row = np.floor((y+1) / cell_size)
+#     col = np.floor((x+1) / cell_size)
+#     row = np.floor((y+1) / cell_size)
 
-    # grid cell corners
-    x0, y0 = x_min + col * cell_size, x_min + row * cell_size
-    x1, y1 = x_min + (col + 1) * cell_size, x_min + (row + 1) * cell_size
+#     # grid cell corners
+#     x0, y0 = x_min + col * cell_size, x_min + row * cell_size
+#     x1, y1 = x_min + (col + 1) * cell_size, x_min + (row + 1) * cell_size
 
-    # cell vertices
-    A = np.array([x0, y0, z_values[int(row * SIZE + col)]])
-    B = np.array([x1, y0, z_values[int(row * SIZE + col + 1)]])
-    D = np.array([x0, y1, z_values[int((row + 1) * SIZE + col)]])
-    C = np.array([x1, y1, z_values[int((row + 1) * SIZE + col + 1)]])
-    # print(f"A: {A}, B: {B}, C: {C}, D: {D}")
+#     # cell vertices
+#     A = np.array([x0, y0, z_values[int(row * SIZE + col)]])
+#     B = np.array([x1, y0, z_values[int(row * SIZE + col + 1)]])
+#     D = np.array([x0, y1, z_values[int((row + 1) * SIZE + col)]])
+#     C = np.array([x1, y1, z_values[int((row + 1) * SIZE + col + 1)]])
+#     # print(f"A: {A}, B: {B}, C: {C}, D: {D}")
 
-    # determine in which triangle of the cell the point is
-    if (x - x0) * (y1 - y0) > (y - y0) * (x1 - x0):
-        # Triangle ABC
-        v0, v1, v2 = A, B, C
-        # print("ABC")
-    else:
-        # Triangle BCD
-        v0, v1, v2 = D, A, C
-        # print("DAC")
+#     # determine in which triangle of the cell the point is
+#     if (x - x0) * (y1 - y0) > (y - y0) * (x1 - x0):
+#         # Triangle ABC
+#         v0, v1, v2 = A, B, C
+#         # print("ABC")
+#     else:
+#         # Triangle BCD
+#         v0, v1, v2 = D, A, C
+#         # print("DAC")
+#     return v0, v1, v2
+def get_triangles_of_grid_points(points, z_values, SIZE, x_min, x_max):
+    x = points[:, 0]
+    y = points[:, 1]
+    cell_size = (x_max - x_min) / (SIZE - 1)
+
+    col = np.floor((x + 1) / cell_size).astype(int)
+    row = np.floor((y + 1) / cell_size).astype(int)
+
+    x0 = x_min + col * cell_size
+    y0 = x_min + row * cell_size
+    x1 = x_min + (col + 1) * cell_size
+    y1 = x_min + (row + 1) * cell_size
+
+    A = np.stack([x0, y0, z_values[row * SIZE + col]], axis=-1)
+    B = np.stack([x1, y0, z_values[row * SIZE + col + 1]], axis=-1)
+    D = np.stack([x0, y1, z_values[(row + 1) * SIZE + col]], axis=-1)
+    C = np.stack([x1, y1, z_values[(row + 1) * SIZE + col + 1]], axis=-1)
+
+    condition = (x - x0) * (y1 - y0) > (y - y0) * (x1 - x0)
+    v0 = np.where(condition[:, None], A, D)
+    v1 = np.where(condition[:, None], B, A)
+    v2 = np.where(condition[:, None], C, C)
+
     return v0, v1, v2
 
-def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
-    '''Interpolates the height of a point using barycentric interpolation.'''
-    x,y = point[0], point[1]
-    v0, v1, v2 = get_triangle_of_grid_point(point, z_values, SIZE, x_min, x_max)
+# def barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max):
+#     '''Interpolates the height of a point using barycentric interpolation.'''
+#     x,y = point[0], point[1]
+#     v0, v1, v2 = get_triangle_of_grid_point(point, z_values, SIZE, x_min, x_max)
     
-    # compute the barycentric coordinates
-    l1 = ((v1[1] - v2[1]) * (x - v2[0]) + (v2[0] - v1[0]) * (y - v2[1])) / ((v1[1] - v2[1]) * (v0[0] - v2[0]) + (v2[0] - v1[0]) * (v0[1] - v2[1]))
-    l2 = ((v2[1] - v0[1]) * (x - v2[0]) + (v0[0] - v2[0]) * (y - v2[1])) / ((v1[1] - v2[1]) * (v0[0] - v2[0]) + (v2[0] - v1[0]) * (v0[1] - v2[1]))
+#     # compute the barycentric coordinates
+#     l1 = ((v1[1] - v2[1]) * (x - v2[0]) + (v2[0] - v1[0]) * (y - v2[1])) / ((v1[1] - v2[1]) * (v0[0] - v2[0]) + (v2[0] - v1[0]) * (v0[1] - v2[1]))
+#     l2 = ((v2[1] - v0[1]) * (x - v2[0]) + (v0[0] - v2[0]) * (y - v2[1])) / ((v1[1] - v2[1]) * (v0[0] - v2[0]) + (v2[0] - v1[0]) * (v0[1] - v2[1]))
+#     l3 = 1 - l1 - l2
+
+#     # interpolate the height of the point
+#     z = l1 * v0[2] + l2 * v1[2] + l3 * v2[2]
+#     return z
+def barycentric_interpolate_height(points, z_values, SIZE, x_min, x_max):
+    '''Interpolates the height of points using barycentric interpolation.'''
+    x = points[:, 0]
+    y = points[:, 1]
+    v0, v1, v2 = get_triangles_of_grid_points(points, z_values, SIZE, x_min, x_max)
+
+    denom = ((v1[:, 1] - v2[:, 1]) * (v0[:, 0] - v2[:, 0]) + (v2[:, 0] - v1[:, 0]) * (v0[:, 1] - v2[:, 1]))
+    l1 = ((v1[:, 1] - v2[:, 1]) * (x - v2[:, 0]) + (v2[:, 0] - v1[:, 0]) * (y - v2[:, 1])) / denom
+    l2 = ((v2[:, 1] - v0[:, 1]) * (x - v2[:, 0]) + (v0[:, 0] - v2[:, 0]) * (y - v2[:, 1])) / denom
     l3 = 1 - l1 - l2
 
-    # interpolate the height of the point
-    z = l1 * v0[2] + l2 * v1[2] + l3 * v2[2]
+    z = l1 * v0[:, 2] + l2 * v1[:, 2] + l3 * v2[:, 2]
     return z
 
 def calculate_triangle_centroid(points):

@@ -1,13 +1,23 @@
 import numpy as np
 import heapq
 from tqdm import tqdm
+from collections import defaultdict
 
 class Dijkstra:
     def __init__(self, graph):
         self.graph = graph
         self.n_vertices = graph.shape[0]
+        self.adj_list = self.create_adj_list(graph)
         self.distances = np.full((self.n_vertices, self.n_vertices), np.inf)
         self.predecessors = np.full((self.n_vertices, self.n_vertices), -1)
+
+    def create_adj_list(self, graph):
+        adj_list = defaultdict(list)
+        for i in range(graph.shape[0]):
+            for j in range(graph.shape[1]):
+                if graph[i][j] > 0:
+                    adj_list[i].append((j, graph[i][j]))
+        return adj_list
 
     def calculate_shortest_paths_from_vertex(self, start_vertex):
         self.distances[start_vertex] = np.full(self.n_vertices, np.inf)
@@ -21,15 +31,13 @@ class Dijkstra:
             if current_distance > self.distances[start_vertex][current_vertex]:
                 continue
 
-            for neighbor in range(self.n_vertices):
-                weight = self.graph[current_vertex, neighbor]
-                if weight > 0:
-                    distance = current_distance + weight
+            for neighbor, weight in self.adj_list[current_vertex]:
+                distance = current_distance + weight
 
-                    if distance < self.distances[start_vertex][neighbor]:
-                        self.distances[start_vertex][neighbor] = distance
-                        predecessors[neighbor] = current_vertex
-                        heapq.heappush(min_heap, (distance, neighbor))
+                if distance < self.distances[start_vertex][neighbor]:
+                    self.distances[start_vertex][neighbor] = distance
+                    predecessors[neighbor] = current_vertex
+                    heapq.heappush(min_heap, (distance, neighbor))
 
         self.predecessors[start_vertex] = predecessors
 
@@ -41,7 +49,6 @@ class Dijkstra:
         return self.distances
     
     def get_distance_from_to(self, start_vertex, end_vertex):
-        self.calculate_shortest_paths_from_vertex(start_vertex)
         return self.distances[start_vertex][end_vertex]
 
     def get_shortest_path(self, start_vertex, end_vertex):
@@ -59,6 +66,7 @@ class Dijkstra:
     def set_graph(self, graph):
         self.graph = graph
         self.n_vertices = graph.shape[0]
+        self.adj_list = self.create_adj_list(graph)
         self.distances = np.full((self.n_vertices, self.n_vertices), np.inf)
         self.predecessors = np.full((self.n_vertices, self.n_vertices), -1)
 
