@@ -43,7 +43,7 @@ TRIAL_MODE = False # False
 
 class PlagueSpread3D(Scene3D):
     def __init__(self, WIDTH, HEIGHT):
-        super().__init__(WIDTH, HEIGHT, "Lab5", output=True, n_sliders=2)
+        super().__init__(WIDTH, HEIGHT, "Plague Spread 3D", output=True, n_sliders=2)
         self._scenario_mode_init()
 
         self.scenario_parameters_init()
@@ -126,10 +126,10 @@ class PlagueSpread3D(Scene3D):
     def create_grid(self):
         '''Creates a 3D grid on the z=0 plane'''
         # create a grid of evenly-spaced points
-        grid = np.linspace(-1, 1, self.GRID_SIZE)
-        grid_x, grid_y = np.meshgrid(grid, grid)
-        grid_x_flat = grid_x.ravel()
-        grid_y_flat = grid_y.ravel()
+        grid = np.linspace(-1, 1, self.GRID_SIZE) # split from -1 to 1 into GRID_SIZE parts
+        grid_x, grid_y = np.meshgrid(grid, grid) # create a meshgrid, i.e., a 2D grid of points
+        grid_x_flat = grid_x.ravel() # flatten the grid
+        grid_y_flat = grid_y.ravel() 
         
         # Generate Perlin noise values for the grid points
         z_values = np.array([pnoise2(x, y, octaves=1, persistence=0.5, lacunarity=2.0, repeatx=self.GRID_SIZE, repeaty=self.GRID_SIZE, base=0)
@@ -144,7 +144,7 @@ class PlagueSpread3D(Scene3D):
     def triangulate_grid(self, grid, size, x_min, x_max):
         '''Triangulates the grid to form a mesh.'''
         list_of_indexed_triangles = []
-        for i, point in enumerate(grid):
+        for i in range(len(grid)):
             next = i + 1
             upper = i - size
             diagonal = i + size + 1
@@ -275,7 +275,7 @@ class PlagueSpread3D(Scene3D):
 
         path = os.path.join(os.path.dirname(__file__), "resources")
         centroids_file_path = os.path.join(path, "centroids.npy")
-        map_file_path = os.path.join(path, "centroid_to_triangle_index_map.pkl")
+        # map_file_path = os.path.join(path, "centroid_to_triangle_index_map.pkl") # DEPRECATED
         if not update:
             console_log("Centroids exist.")
             console_log("Loading the centroids and mappings...")
@@ -289,7 +289,7 @@ class PlagueSpread3D(Scene3D):
         else:
             centroids = []
             # centroid_to_triangle_index_map = {} # DEPRECATED
-            for i, triangle_index in enumerate(tqdm(self.triangle_indices, desc="Calculating centroids")):
+            for triangle_index in tqdm(self.triangle_indices, desc="Calculating centroids"):
                 triangle = [self.grid.points[triangle_index[0]], self.grid.points[triangle_index[1]], self.grid.points[triangle_index[2]]]
                 centroid = calculate_triangle_centroid(triangle)
                 centroids.append(centroid)
@@ -513,16 +513,19 @@ class PlagueSpread3D(Scene3D):
 
         def version_1():
             self.POPULATION = 1000 if not self.TRIAL_MODE else 5
+            self.POPULATION_SIZE = 0.7 if not self.TRIAL_MODE else 0.7
             self.WELLS = 15 if not self.TRIAL_MODE else 3
             self.reset_scene()
 
         def version_2():
             self.POPULATION = 10000 if not self.TRIAL_MODE else 10
+            self.POPULATION_SIZE = 0.6 if not self.TRIAL_MODE else 0.7
             self.WELLS = 30 if not self.TRIAL_MODE else 5
             self.reset_scene()
         
         def version_3():
             self.POPULATION = 30000 if not self.TRIAL_MODE else 15
+            self.POPULATION_SIZE = 0.5 if not self.TRIAL_MODE else 0.7
             self.WELLS = 45 if not self.TRIAL_MODE else 7
             self.reset_scene()
 
@@ -546,10 +549,10 @@ class PlagueSpread3D(Scene3D):
             self.reset_scene()
         # increase or decrease the population
         if symbol == Key.M:
-            self.POPULATION += 10
+            self.POPULATION += 100 if not self.TRIAL_MODE else 10
             self.reset_scene()
         if symbol == Key.N:
-            self.POPULATION -= 10
+            self.POPULATION -= 100 if not self.TRIAL_MODE else 10
             self.reset_scene()
         # toggle between dense regions
         if symbol == Key.W:
@@ -629,6 +632,7 @@ class PlagueSpread3D(Scene3D):
 
         # populations, counts, and ratios
         self.POPULATION = 1000
+        self.POPULATION_SIZE = 0.7
         self.WELLS = 15
         self.ratio_of_infected_wells = 0.2
         self.P1 = 0.8 # probability of choosing the closest well
@@ -713,8 +717,25 @@ class PlagueSpread3D(Scene3D):
         # population point cloud
         console_log("Creating the population...")
         self.population_pcd_name = "Population"
-        self.population_pcd = PointSet3D(color=self.healthy_population_color, size=0.7)
-        self.population_pcd.createRandom(self.bound, self.POPULATION, 42, self.healthy_population_color) # dislikes seed of self.population_pcd_name
+        self.population_pcd = PointSet3D(color=self.healthy_population_color, size=self.POPULATION_SIZE)
+        if not self.DENSE_REGIONS:
+            self.population_pcd.createRandom(self.bound, self.POPULATION, 42, self.healthy_population_color) # dislikes seed of self.population_pcd_name
+        else:
+            # regions of interests
+            rois = np.array([[-0.5, -0.5, 0], [0.76215255, 0.58612746, 0]])
+            if self.POPULATION <= 1000:
+                weights = np.array([0.6, 0.4])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.5
+            elif self.POPULATION < 10000:
+                weights = np.array([0.5, 0.5])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.8
+            elif self.POPULATION < 30000 or self.POPULATION >= 30000:
+                weights = np.array([0.7, 0.7])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 2
+            self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, 42, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         console_log(f"Adjusting the height of the population points...")
         self.adjust_height_of_points(self.population_pcd)
         self.addShape(self.population_pcd, self.population_pcd_name)
@@ -747,14 +768,31 @@ class PlagueSpread3D(Scene3D):
 
         # population point cloud
         self.population_pcd_name = "Mini Population"
-        self.population_pcd = PointSet3D(color=self.healthy_population_color, size=0.7)
-        self.population_pcd.createRandom(self.bound, self.POPULATION, 42, self.healthy_population_color) # dislikes seed of self.population_pcd_name
+        self.population_pcd = PointSet3D(color=self.healthy_population_color, size=self.POPULATION_SIZE)
+        if not self.DENSE_REGIONS:
+            self.population_pcd.createRandom(self.bound, self.POPULATION, 42, self.healthy_population_color) # dislikes seed of self.population_pcd_name
+        else:
+            # regions of interests
+            rois = np.array([[-0.5, -0.5, 0], [0.76215255, 0.58612746, 0]])
+            if self.POPULATION <= 5:
+                weights = np.array([0.6, 0.4])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.5
+            elif self.POPULATION < 10:
+                weights = np.array([0.5, 0.5])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.8
+            elif self.POPULATION < 15 or self.POPULATION >= 15: # for version 4, this changes
+                weights = np.array([0.7, 0.7])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 2
+            self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, 42, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         self.adjust_height_of_points(self.population_pcd)
         self.addShape(self.population_pcd, self.population_pcd_name)
 
         # wells point cloud
         self.wells_pcd_name = "Mini Wells"
-        self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2)
+        self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2.5)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
         self.adjust_height_of_points(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)

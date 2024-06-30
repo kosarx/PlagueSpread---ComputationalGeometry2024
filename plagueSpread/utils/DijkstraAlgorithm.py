@@ -71,7 +71,7 @@ class Dijkstra:
         self.predecessors = np.full((self.n_vertices, self.n_vertices), -1)
 
 if __name__ == "__main__":
-    # Example graph represented as an adjacency matrix
+    # Example graph represented as an adjacency matrix with weights
     graph = np.array([
         [0, 7, 9, 0, 0, 14],
         [7, 0, 10, 15, 0, 0],
@@ -92,9 +92,9 @@ if __name__ == "__main__":
         for end_vertex in range(graph.shape[0]):
             path = dijkstra.get_shortest_path(start_vertex, end_vertex)
             if path:
-                print(f"  Shortest path to vertex {end_vertex}: {path} with cost {distances[start_vertex][end_vertex]}")
+                print(f"Shortest path to vertex {end_vertex}: {path} with cost {distances[start_vertex][end_vertex]}")
             else:
-                print(f"  No path found to vertex {end_vertex}")
+                print(f"No path found to vertex {end_vertex}")
     
     # Get the distance from vertex 0 to vertex 4
     start_vertex = 0 # any vertex

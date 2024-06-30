@@ -2827,6 +2827,71 @@ class PointSet3D(ShapeSet):
         else:
             raise TypeError
         
+    def createRandomWeighted(self, bound, num_points, seed=None, color=(0, 0, 0), rois=None, rois_radii=None, rois_weights=[2], decrease_factor=0.5):
+        '''Appends random points to the pointset.
+
+        Generates random points inside a region weightedly and appends
+        them to the pointset.
+        
+        Args:
+            bound: The area inside of which the random points will be
+                generated. Should be a Cuboid3D.
+            num_points: How many points to generate.
+            seed: An optional seed for the RNG.
+            color: The color of the generated points.
+            rois: List of regions of interest (subregions) where points should be sampled more frequently.
+            rois_radii: List of radii for each region of interest.
+            rois_weights: List of weight factors by which the ROIs should be favored for point generation.
+            decrease_factor: Factor by which the density of points around ROIs decreases.
+        '''
+        if len(self._points) > 0:
+            print('Point Set is not empty; random points will be appended to the existing ones.')
+
+        if seed:
+            if isinstance(seed, str):
+                seed = seed.encode()
+                seed = int.from_bytes(seed, "big") % (2 << 32)
+            np.random.seed(seed)
+
+        def generate_random_point_in_cuboid(cuboid):
+            x = random.uniform(cuboid.x_min, cuboid.x_max)
+            y = random.uniform(cuboid.y_min, cuboid.y_max)
+            z = random.uniform(cuboid.z_min, cuboid.z_max)
+            return x, y, z
+
+        def generate_random_point_around_roi(roi, radius):
+            adjusted_radius = radius * (random.uniform(0, 1) ** decrease_factor)
+            phi = random.uniform(0, 1) * 2 * np.pi
+            costheta = random.uniform(-1, 1)
+            u = random.uniform(0, 1)
+
+            theta = np.arccos(costheta)
+            r = adjusted_radius * (u ** (1 / 3))
+
+            x = roi[0] + r * np.sin(theta) * np.cos(phi)
+            y = roi[1] + r * np.sin(theta) * np.sin(phi)
+            z = roi[2] + r * np.cos(theta)
+            return x, y, z
+
+        for _ in range(num_points):
+            if rois is not None:
+                selection = random.randint(0, len(rois) - 1)
+                if len(rois_weights) == 1:
+                    roi_weight = rois_weights[0]
+                else:
+                    roi_weight = rois_weights[selection]
+                if random.random() < roi_weight / (roi_weight + 1):
+                    roi = rois[selection]
+                    radius = rois_radii[selection]
+                    x, y, z = generate_random_point_around_roi(roi, radius)
+                else:
+                    x, y, z = generate_random_point_in_cuboid(bound)
+            else:
+                x, y, z = generate_random_point_in_cuboid(bound)
+
+            self._points.append([x, y, z])
+            self._colors.append([*color, 1] if len(color) == 3 else [*color])
+            
     def remove(self, index:int):
         '''Removes a point from the pointset.
 

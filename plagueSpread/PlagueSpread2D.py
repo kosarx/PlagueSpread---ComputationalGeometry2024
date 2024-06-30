@@ -126,16 +126,19 @@ class PlagueSpread2D(Scene2D):
 
         def version_1():
             self.POPULATION = 1000 if not self.TRIAL_MODE else 5
+            self.POPULATION_SIZE = 0.7 if not self.TRIAL_MODE else 0.7
             self.WELLS = 15 if not self.TRIAL_MODE else 3
             self.reset_scene()
 
         def version_2():
             self.POPULATION = 10000 if not self.TRIAL_MODE else 10
+            self.POPULATION_SIZE = 0.7 if not self.TRIAL_MODE else 0.7
             self.WELLS = 30 if not self.TRIAL_MODE else 5
             self.reset_scene()
 
         def version_3():
             self.POPULATION = 30000 if not self.TRIAL_MODE else 15
+            self.POPULATION_SIZE = 0.5 if not self.TRIAL_MODE else 0.7
             self.WELLS = 45 if not self.TRIAL_MODE else 7
             self.reset_scene()
         
@@ -159,10 +162,10 @@ class PlagueSpread2D(Scene2D):
             self.reset_scene()
         # increase or decrease the population
         if symbol == Key.M:
-            self.POPULATION += 10
+            self.POPULATION += 100 if not self.TRIAL_MODE else 10
             self.reset_scene()
         if symbol == Key.N:
-            self.POPULATION -= 10
+            self.POPULATION -= 100 if not self.TRIAL_MODE else 10
             self.reset_scene()
         # toggle between dense regions of the population
         if symbol == Key.W:
@@ -233,6 +236,7 @@ class PlagueSpread2D(Scene2D):
 
         # populations, counts, and ratios
         self.POPULATION = 1000
+        self.POPULATION_SIZE = 0.7
         self.WELLS = 15
         self.ratio_of_infected_wells = 0.2
         self.P1 = 0.8 # probability of choosing the closest well
@@ -299,7 +303,7 @@ class PlagueSpread2D(Scene2D):
         
         # population point cloud
         self.population_pcd_name = "Population" 
-        self.population_pcd = PointSet2D(color=self.healthy_population_color, size=0.7)
+        self.population_pcd = PointSet2D(color=self.healthy_population_color, size=self.POPULATION_SIZE)
         if not self.DENSE_REGIONS:
             self.population_pcd.createRandom(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color)
         else:
@@ -309,11 +313,11 @@ class PlagueSpread2D(Scene2D):
                 weights = np.array([0.6, 0.4])
                 rois_radii = np.array([0.3, 0.2])
                 decrease_factor = 0.5
-            elif self.POPULATION <= 10000:
+            elif self.POPULATION < 10000:
                 weights = np.array([0.5, 0.5])
                 rois_radii = np.array([0.3, 0.2])
                 decrease_factor = 0.8
-            elif self.POPULATION <= 30000 or self.POPULATION > 30000:
+            elif self.POPULATION < 30000 or self.POPULATION >= 30000:
                 weights = np.array([0.7, 0.7])
                 rois_radii = np.array([0.3, 0.4])
                 decrease_factor = 2
@@ -338,12 +342,11 @@ class PlagueSpread2D(Scene2D):
         '''Constructs a mini scenario for testing purposes.'''
         console_log("Constructing mini scenario...")
 
-        # bound = Rectangle2D((-0.9, -0.9), (0.9, 0.9))
         self.bound = Rectangle2D(self.bbx[0], self.bbx[1])
         self.addShape(self.bound, "bound")
 
         self.population_pcd_name = "Mini Population"
-        self.population_pcd = PointSet2D(color=self.healthy_population_color, size=0.7)
+        self.population_pcd = PointSet2D(color=self.healthy_population_color, size=self.POPULATION_SIZE)
         if not self.DENSE_REGIONS:
             self.population_pcd.createRandom(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color)
         else:
@@ -353,11 +356,11 @@ class PlagueSpread2D(Scene2D):
                 weights = np.array([0.6, 0.4])
                 rois_radii = np.array([0.3, 0.2])
                 decrease_factor = 0.5
-            elif self.POPULATION <= 10:
+            elif self.POPULATION < 10:
                 weights = np.array([0.5, 0.5])
                 rois_radii = np.array([0.3, 0.2])
                 decrease_factor = 0.8
-            elif self.POPULATION <= 15 or self.POPULATION > 15:
+            elif self.POPULATION < 15 or self.POPULATION >= 15:
                 weights = np.array([3, 0.7])
                 rois_radii = np.array([0.3, 0.4])
                 decrease_factor = 2
