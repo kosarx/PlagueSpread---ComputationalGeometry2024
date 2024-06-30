@@ -313,7 +313,7 @@ class PlagueSpread2D(Scene2D):
                 weights = np.array([0.5, 0.5])
                 rois_radii = np.array([0.3, 0.2])
                 decrease_factor = 0.8
-            elif self.POPULATION <= 30000:
+            elif self.POPULATION <= 30000 or self.POPULATION > 30000:
                 weights = np.array([0.7, 0.7])
                 rois_radii = np.array([0.3, 0.4])
                 decrease_factor = 2
@@ -344,7 +344,24 @@ class PlagueSpread2D(Scene2D):
 
         self.population_pcd_name = "Mini Population"
         self.population_pcd = PointSet2D(color=self.healthy_population_color, size=0.7)
-        self.population_pcd.createRandom(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color)
+        if not self.DENSE_REGIONS:
+            self.population_pcd.createRandom(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color)
+        else:
+            # regions of interests
+            rois = np.array([[-0.5, -0.5], [0.5, 0.5]])
+            if self.POPULATION <= 5:
+                weights = np.array([0.6, 0.4])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.5
+            elif self.POPULATION <= 10:
+                weights = np.array([0.5, 0.5])
+                rois_radii = np.array([0.3, 0.2])
+                decrease_factor = 0.8
+            elif self.POPULATION <= 15 or self.POPULATION > 15:
+                weights = np.array([3, 0.7])
+                rois_radii = np.array([0.3, 0.4])
+                decrease_factor = 2
+            self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, self.population_pcd_name, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         self.addShape(self.population_pcd, self.population_pcd_name)
         
         console_log(f"Population point cloud is {len(self.population_pcd.points)} points")

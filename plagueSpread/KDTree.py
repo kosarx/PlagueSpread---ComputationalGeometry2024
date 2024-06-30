@@ -355,8 +355,9 @@ class KdNode:
 
             return dstar
 
-        # Convert the test point to a numpy array.
-        test_pt = np.array([test_pt.x, test_pt.y, test_pt.z])
+        # Convert the test point to a numpy array if it is not already.
+        if isinstance(test_pt, Point3D):
+            test_pt = np.array([test_pt.x, test_pt.y, test_pt.z])
 
         # Initialize variables for nearest neighbor search.
         dstar = np.inf

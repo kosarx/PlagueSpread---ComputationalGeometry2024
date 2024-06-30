@@ -81,7 +81,6 @@ class PlagueSpread3D(Scene3D):
         # self._check_grid_mismatch(685) if self.DEBUG else None
         # self._check_grid_mismatch(686) if self.DEBUG else None
         # self._check_grid_mismatch(117) if self.DEBUG else None
-        self.addShape(Point3D([0.0, 1.0, 0.0], size=2, color=Color.RED), "test_point")
 
     def _check_grid_mismatch(self, idx):
         '''Check if get_triangles_of_grid_points and self.triangle_indices are consistent.'''
@@ -445,6 +444,8 @@ class PlagueSpread3D(Scene3D):
         self.terminal_log("---")
         self.terminal_log(f"DEBUG: {self.DEBUG}, CONSOLE_TALK: {self.CONSOLE_TALK}, TRIAL_MODE: {self.TRIAL_MODE}")
         self.terminal_log(f"Population: {self.POPULATION}, Wells: {self.WELLS}, Number of infected wells: {len(self.infected_wells_indices)}, Infected wells indices: {self.infected_wells_indices}")
+        self.terminal_log(f"DENSE REGIONS: {self.DENSE_REGIONS}")
+        self.terminal_log(f"EUCLIDEAN: {self.EUCLIDEAN}")
         self.terminal_log(f"RANDOM_SELECTION: {self.RANDOM_SELECTION}")
         self.terminal_log(f"Chances of choosing the closest well: {self.P1}, Chances of choosing the second closest well: {self.P2}, Chances of choosing the third closest well: {self.P3}") if self.RANDOM_SELECTION else None
         self.terminal_log(f"Number of infected people: {len(self.infected_people_indices)}")
@@ -504,57 +505,6 @@ class PlagueSpread3D(Scene3D):
                     
             self.updateShape("mouse")
 
-    # @world_space
-    # def on_mouse_release(self, x, y, z, button, modifiers):
-    #     if modifiers & Key.MOD_SHIFT:
-    #         if np.isinf(x) or np.isinf(y) or np.isinf(z):
-    #             return
-    #         self.my_mouse_pos.x = x
-    #         self.my_mouse_pos.y = y
-    #         self.my_mouse_pos.z = z
-    #         # self.my_mouse_pos.color = Color.WHITE
-    #         self.my_mouse_pos.color = [1, 1, 1, 0]
-
-    #         # if the mouse is released within the bound...
-    #         if self.within_bound(x, y):
-    #             console_log(f"Mouse released at ({x}, {y}, {z})")
-    #             # if the right mouse button was released...
-    #             if button == Mouse.MOUSERIGHT and modifiers & Key.MOD_SHIFT:
-    #                 # find the closest well to the mouse position
-    #                 closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
-    #                 # if its within a certain distance...
-    #                 if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
-    #                     # check if the closest well is not already infected
-    #                     if closest_well_index not in self.infected_wells_indices:
-    #                         # infect the closest well
-    #                         self.infect_single_well(closest_well_index)
-    #                         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-    #                     else:
-    #                         # disenfect the closest well
-    #                         self.disinfect_single_well(closest_well_index)
-    #                         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-    #             # else, if the left mouse button was released...
-    #             elif button == Mouse.MOUSELEFT and modifiers & Key.MOD_SHIFT:
-    #                 # find the closest well to the mouse position
-    #                 closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
-    #                 # if its within a certain distance...
-    #                 if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
-    #                     # remove the closest well
-    #                     self.remove_single_well(closest_well_index)
-    #                 else:
-    #                     # add a new well at the mouse position
-    #                     self.add_single_well(x, y)
-    #                 self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-    #                 self.resetVoronoi()
-                    
-    #         self.updateShape("mouse")
-
-    # @world_space
-    # def on_mouse_drag(self, x, y, z, dx, dy, button, modifiers):
-    #     if (button == Mouse.MOUSELEFT or button == Mouse.MOUSERIGHT) and modifiers & Key.MOD_SHIFT:
-    #         console_log(f"Mouse dragged at ({x}, {y}, {z})")
-    #         self.on_mouse_press(x, y, z, button, modifiers)
-
     def within_bound(self, x, y):
         '''Checks if the point (x, y) is within the bounding box.'''
         return x >= self.bbx[0][0] and x <= self.bbx[1][0] and y >= self.bbx[0][1] and y <= self.bbx[1][1]
@@ -601,6 +551,13 @@ class PlagueSpread3D(Scene3D):
         if symbol == Key.N:
             self.POPULATION -= 10
             self.reset_scene()
+        # toggle between dense regions
+        if symbol == Key.W:
+            self.DENSE_REGIONS = not self.DENSE_REGIONS
+            self.reset_scene()
+        if symbol == Key.E:
+            self.EUCLIDEAN = not self.EUCLIDEAN
+            self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
         # toggle between random selection and stochastic selection
         if symbol == Key.R:
             self.RANDOM_SELECTION = not self.RANDOM_SELECTION
@@ -680,6 +637,8 @@ class PlagueSpread3D(Scene3D):
 
         # logic, controllers    
         self.RANDOM_SELECTION = False
+        self.DENSE_REGIONS = False
+        self.EUCLIDEAN = False
         # self.VORONOI_ACTIVE = False
         self.VORONOI_VISIBLE = False
         self.COMPUTE_WITH_VORONOI = False
@@ -698,6 +657,8 @@ class PlagueSpread3D(Scene3D):
         self.print("> RIGHT or LEFT: increase, decrease wells.")
         self.print("> M or N: increase, decrease population.")
         self.print("> 1 or 2: scenario version 1 or 2.")
+        self.print("> W: toggle dense regions.")
+        self.print("> E: toggle geodesic or euclidean")
         self.print("> V: toggle Voronoi diagram.")
         self.print("> SHIFT + V: use Voronoi diagram for computations.")
         self.print("> LEFT MOUSE BUTTON: add, remove a well.")
@@ -713,6 +674,8 @@ class PlagueSpread3D(Scene3D):
         print("--> Press RIGHT or LEFT to increase or decrease the number of wells.")
         print("--> Press M or N to increase or decrease the population.")
         print("--> Press 1 or 2 to set the scenario to version 1 or 2.")
+        print("--> Press W to toggle dense regions of the population.")
+        print("--> Press E to toggle between geodesic and euclidean distances.")
         print("--> Press V to toggle the Voronoi diagram.")
         print("--> Press SHIFT + V to use the Voronoi diagram for computations.")
         print("--> Press LEFT MOUSE BUTTON to add or remove a well.")
@@ -759,7 +722,7 @@ class PlagueSpread3D(Scene3D):
         # wells point cloud
         console_log("Creating the wells...")
         self.wells_pcd_name = "Wells"
-        self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2)
+        self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2.5)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
         self.adjust_height_of_points(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
@@ -772,7 +735,7 @@ class PlagueSpread3D(Scene3D):
 
         self.infect_wells(self.ratio_of_infected_wells)
 
-        (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()) #if not self.DEBUG else None
+        (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic())
 
     def construct_mini_scenario(self):
         '''Constructs a mini scenario for testing purposes.'''
@@ -842,6 +805,7 @@ class PlagueSpread3D(Scene3D):
         wells_color_nparray = np.array(self.wells_pcd.colors)
         
         # ratio has priority over hard_number
+        num_of_infected_wells = 0
         if ratio:
             num_of_infected_wells = int(ratio * len(wells_nparray))
             if num_of_infected_wells == 0:
@@ -1091,7 +1055,8 @@ class PlagueSpread3D(Scene3D):
         total_distance = geodesic_distance + start_distance + end_distance
         return total_distance
         
-    def find_closest_well_index_linear(self, person:Point3D|np.ndarray|list|tuple, wells:np.ndarray, wells_triangle_indices:np.ndarray):
+    def find_closest_well_index_geodesic(self, person:Point3D|np.ndarray|list|tuple, wells:np.ndarray, wells_triangle_indices:np.ndarray):
+        '''Finds the index of the closest well to the person using geodesic distance.'''
         if isinstance(person, Point3D):
             person = np.array([person.x, person.y, person.z])
         elif isinstance(person, (list, tuple)):
@@ -1128,7 +1093,7 @@ class PlagueSpread3D(Scene3D):
         
         return closest_well_index
     
-    def _find_closest_well_index_kd_tree(self, person:Point3D|np.ndarray|list|tuple, wells:np.ndarray):
+    def find_closest_well_index_kd_tree(self, person:Point3D|np.ndarray|list|tuple, wells:np.ndarray):
         '''Finds the index of the closest well to the person using a k-d tree, euclidean distance.'''
         # get the nearest well to the person
         closest_well_node = KdNode.nearestNeighbor(person, self.kd_wells_root)
@@ -1140,7 +1105,7 @@ class PlagueSpread3D(Scene3D):
         ...
 
     def find_infected_people(self):
-        '''Finds the people infected by the wells, using geodesic distances.'''
+        '''Finds the people infected by the wells, using geodesic or euclidean distances.'''
 
         # infected_people_indices is a list of indices of the infected people from the population_pcd.points
         self.infected_people_indices = []
@@ -1160,7 +1125,10 @@ class PlagueSpread3D(Scene3D):
     
             # for every person in the population, check if the closest well to them is infected
             for i, person in enumerate(tqdm(population_nparray, desc="For all people, infect:")):
-                closest_well_index = self.find_closest_well_index_linear(person, wells_nparray, wells_triangle_index) #self._find_closest_well_index_kd_tree(person, wells_nparray) #
+                if not self.EUCLIDEAN:
+                    closest_well_index = self.find_closest_well_index_geodesic(person, wells_nparray, wells_triangle_index) 
+                else:
+                    closest_well_index = self.find_closest_well_index_kd_tree(person, wells_nparray) 
                 # if the closest well is infected, infect the person
                 if closest_well_index in self.infected_wells_indices:
                     population_color_nparray[i] = self.infected_population_color
@@ -1178,7 +1146,8 @@ class PlagueSpread3D(Scene3D):
         self.terminal_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
     
     def get_geodesic_distances_from_to_many_naive(self, person, wells, wells_triangle_indices):
-        '''Calculates the geodesic distances between a person and many wells.'''
+        '''Calculates the geodesic distances between a person and many wells naively, by identifying the triangle in
+        which the start point is located, and searching for the index linearly in the triangle_indices list'''
 
         # get the triangle in which the person is located
         starting_triangle_vertices = get_triangles_of_grid_points(person, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
@@ -1216,7 +1185,7 @@ class PlagueSpread3D(Scene3D):
         return closest_well_index, second_closest_well_index, third_closest_well_index
     
     def find_stochastic_infected_linear(self, population_nparray, population_color_nparray, wells_nparray):
-        '''Infects people by the wells in a stochastic manner.'''
+        '''Infects people by the wells in a stochastic manner, by linearly searching for the triangles.'''
         # for all wells, get the triangle in which the well is located
         wells_triangles_indices = []
         for well in wells_nparray:
@@ -1244,7 +1213,7 @@ class PlagueSpread3D(Scene3D):
         return population_color_nparray
     
     def get_geodesic_distances_from_to_many(self, person, wells, wells_triangle_indices):
-        '''Calculates the geodesic distances between a person and many wells.'''
+        '''Calculates the geodesic distances between a person and many wells using the centroid k-d tree.'''
         
         # get the nearest centroid to the person
         person_centroid_node = KdNode.nearestNeighbor(person, self.kd_centroid_root)
@@ -1269,8 +1238,8 @@ class PlagueSpread3D(Scene3D):
 
         return closest_wells_indices
 
-    def find_stochastic_infected_kd_tree(self, population_nparray, population_color_nparray, wells_nparray):
-        '''Infects people by the wells in a stochastic manner using the k-d tree.'''
+    def find_stochastic_infected_geodesic(self, population_nparray, population_color_nparray, wells_nparray):
+        '''Infects people by the wells in a stochastic manner geodesically, using the centroids k-d tree.'''
         # for all the wells, get the index of the nearest centroid
         wells_triangle_index = []
         for well in wells_nparray:
@@ -1283,6 +1252,30 @@ class PlagueSpread3D(Scene3D):
         for i, person in enumerate(tqdm(population_nparray, desc="For all infected people")):
             closest_wells = self.get_geodesic_distances_from_to_many(person, wells_nparray, wells_triangle_index)
             choice = np.random.choice(closest_wells, p=[self.P1, self.P2, self.P3])
+            if choice in self.infected_wells_indices:
+                self.infected_people_indices.append(i)
+                population_color_nparray[i] = self.infected_population_color
+            else:
+                population_color_nparray[i] = self.healthy_population_color
+
+        return population_color_nparray
+    
+    def find_stochastic_infected_euclidean(self, population_nparray, population_color_nparray, wells_nparray):
+        '''Infects people by the wells in a stochastic manner, using the nearest neighbor well k-d tree.'''
+        # for every person in the population, find the 3 closest wells to them
+        for i, person in enumerate(tqdm(population_nparray, desc="For all infected people")):
+            # find the 3 closest wells to the person
+            closest_wells = KdNode.nearestK(person, self.kd_wells_root, 3)
+            # transform the nodes to numpy arrays, in reverse order to get the closest well first
+            closest_wells = np.array([closest_wells[2].point,
+                                        closest_wells[1].point,
+                                        closest_wells[0].point])
+            closest_wells_indices = []
+            for well in closest_wells:
+                closest_well_index = np.where(np.all(wells_nparray == well, axis=1))[0][0]
+                closest_wells_indices.append(closest_well_index)
+
+            choice = np.random.choice(closest_wells_indices, p=[self.P1, self.P2, self.P3])
             if choice in self.infected_wells_indices:
                 self.infected_people_indices.append(i)
                 population_color_nparray[i] = self.infected_population_color
@@ -1304,7 +1297,10 @@ class PlagueSpread3D(Scene3D):
         # slow
         # population_color_nparray = self.find_stochastic_infected_linear(population_nparray, population_color_nparray, wells_nparray)
 
-        population_color_nparray = self.find_stochastic_infected_kd_tree(population_nparray, population_color_nparray, wells_nparray)
+        if not self.EUCLIDEAN:
+            population_color_nparray = self.find_stochastic_infected_geodesic(population_nparray, population_color_nparray, wells_nparray)
+        else:
+            population_color_nparray = self.find_stochastic_infected_euclidean(population_nparray, population_color_nparray, wells_nparray)
 
         self.population_pcd.colors = population_color_nparray
         self.updateShape(self.population_pcd_name)
