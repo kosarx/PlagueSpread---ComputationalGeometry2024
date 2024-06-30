@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 
 from plagueSpread.utils.GeometryUtils import (
-    get_triangles_of_grid_points, barycentric_interpolate_height, calculate_triangle_centroid 
+    get_triangles_of_grid_points, barycentric_interpolate_height, calculate_triangle_centroids 
 )
 from plagueSpread.utils.DijkstraAlgorithm import Dijkstra
 from plagueSpread.KDTree import KdNode
@@ -175,7 +175,15 @@ class PlagueSpread3D(Scene3D):
         update_shortest_paths = True
 
         # file paths
-        path = os.path.join(os.path.dirname(__file__), "resources")
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            grid_100_file_path = os.path.join(path, "grid.npy")
+            if os.path.exists(grid_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
         grid_file_path = os.path.join(path, "grid.npy")
 
         # check if grid.npy exists
@@ -273,36 +281,38 @@ class PlagueSpread3D(Scene3D):
     def calculate_centroids(self, update:bool=False):
         '''Calculates the centroids of the triangles.'''
 
-        path = os.path.join(os.path.dirname(__file__), "resources")
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            centroids_100_file_path = os.path.join(path, "centroids.npy")
+            if os.path.exists(centroids_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
         centroids_file_path = os.path.join(path, "centroids.npy")
         # map_file_path = os.path.join(path, "centroid_to_triangle_index_map.pkl") # DEPRECATED
         if not update:
             console_log("Centroids exist.")
-            console_log("Loading the centroids and mappings...")
+            console_log("Loading the centroids...")
             start_time = time()
             centroids = np.load(centroids_file_path)
             # Load the map # DEPRECATED
             # with open(map_file_path, 'rb') as map_file:
             #     centroid_to_triangle_index_map = pickle.load(map_file)
             end_time = time()
-            console_log(f"Centroids and mappings loaded in {end_time - start_time} seconds.")
+            console_log(f"Centroids loaded in {end_time - start_time} seconds.")
         else:
-            centroids = []
-            # centroid_to_triangle_index_map = {} # DEPRECATED
-            for triangle_index in tqdm(self.triangle_indices, desc="Calculating centroids"):
-                triangle = [self.grid.points[triangle_index[0]], self.grid.points[triangle_index[1]], self.grid.points[triangle_index[2]]]
-                centroid = calculate_triangle_centroid(triangle)
-                centroids.append(centroid)
-                # centroid_to_triangle_index_map[tuple(centroid)] = i # DEPRECATED
+            centroids = calculate_triangle_centroids(self.triangle_indices, self.grid.points)
             centroids = np.array(centroids)
-            console_log("Saving the centroids and mappings...")
+            console_log("Saving the centroids...")
             start_time = time()
             np.save(centroids_file_path, centroids)
             # Save the map # DEPRECATED
             # with open(map_file_path, 'wb') as map_file:
             #     pickle.dump(centroid_to_triangle_index_map, map_file)
             end_time = time()
-            console_log(f"Centroids and mappings saved in {end_time - start_time} seconds.")
+            console_log(f"Centroids saved in {end_time - start_time} seconds.")
 
         console_log(f"Shape of the centroids array: {centroids.shape}")
         self.centroids = centroids
@@ -332,13 +342,50 @@ class PlagueSpread3D(Scene3D):
                     adjacency_matrix[i, j] = 1
         console_log(f"Shape of the adjacency matrix: {adjacency_matrix.shape}")
         return adjacency_matrix
+    
+    def calculate_adjacency_matrix_optimized(self, triangle_indices):
+        '''Calculates the adjacency matrix for the grid.'''
+        num_triangles = len(triangle_indices)
+        adjacency_matrix = np.zeros((num_triangles, num_triangles))
+        
+        # create a dictionary to map edges to triangles
+        edge_to_triangles = {}
+        
+        for i, triangle in enumerate(triangle_indices):
+            edges = [
+                tuple(sorted([triangle[0], triangle[1]])),
+                tuple(sorted([triangle[1], triangle[2]])),
+                tuple(sorted([triangle[2], triangle[0]]))
+            ]
+            for edge in edges:
+                if edge not in edge_to_triangles:
+                    edge_to_triangles[edge] = []
+                edge_to_triangles[edge].append(i)
+        
+        # use the edge-to-triangle mapping to fill the adjacency matrix
+        for edge, triangles in tqdm(edge_to_triangles.items(), desc="Calculating adjacency matrix"):
+            for i in range(len(triangles)):
+                for j in range(i + 1, len(triangles)):
+                    adjacency_matrix[triangles[i], triangles[j]] = 1
+                    adjacency_matrix[triangles[j], triangles[i]] = 1
+        
+        return adjacency_matrix
 
     def create_adjacency_matrix(self, update:bool=False):
         '''Creates an adjacency matrix for the grid.'''
         adjacency_matrix = None
 
         # file paths
-        path = os.path.join(os.path.dirname(__file__), "resources")
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            adj_100_file_path = os.path.join(path, "adjacency.npy")
+            if os.path.exists(adj_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
+
         adj_file_path = os.path.join(path, "adjacency.npy")
         if not update:
             console_log("Adjacency matrix exists.")
@@ -352,7 +399,7 @@ class PlagueSpread3D(Scene3D):
             console_log("Adjacency matrix: calculating and storing it...")
 
             # calculate the adjacency matrix
-            adjacency_matrix = self.calculate_adjacency_matrix()
+            adjacency_matrix = self.calculate_adjacency_matrix_optimized(self.triangle_indices) # self.calculate_adjacency_matrix()
             console_log("Saving the adjacency matrix...")
             start_time = time()
             np.save(adj_file_path, adjacency_matrix)
@@ -368,7 +415,7 @@ class PlagueSpread3D(Scene3D):
         # for all the centroids, calculate the distances between them
         centroids = self.centroids
         distances_matrix = np.zeros((len(centroids), len(centroids)))
-        for i, centroid1 in enumerate(tqdm(centroids, desc="Calculating distances", leave=False)):
+        for i, centroid1 in enumerate(tqdm(centroids, desc="Calculating distances", leave=True)):
             for j, centroid2 in enumerate(centroids):
                 # if the triangle centroids are adjacent, calculate the distance between them, otherwise 0 (same triangle or not adjacent)
                 if self.adjacency_matrix[i, j] == 1:
@@ -378,13 +425,36 @@ class PlagueSpread3D(Scene3D):
         # shape of the distances matrix for 80x80 grid should be (80, 80)
         console_log(f"Shape of the distances matrix: {distances_matrix.shape}")
         return distances_matrix
+    
+    def calculate_distances_matrix_optimized(self, centroids, adjacency_matrix):
+        '''Calculates a matrix of distances between the centroids of the triangles.'''
+
+        num_centroids = len(centroids)
+        distances_matrix = np.zeros((num_centroids, num_centroids))
+        
+        # calculate distances only for adjacent centroids
+        for i in tqdm(range(num_centroids), desc="Calculating distances", leave=True):
+            adjacent_indices = np.where(adjacency_matrix[i] == 1)[0]
+            distances_matrix[i, adjacent_indices] = np.linalg.norm(centroids[i] - centroids[adjacent_indices], axis=1)
+
+        console_log(f"Shape of the distances matrix: {distances_matrix.shape}")
+        return distances_matrix
         
     def create_distances_matrix(self, update:bool=False):
         '''Creates a matrix of distances between the centroids of the triangles.'''
         centroid_distances_matrix = None
-        path = os.path.join(os.path.dirname(__file__), "resources")
-        distances_file_path = os.path.join(path, "centroid_distances.npy")
         
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            distances_100_file_path = os.path.join(path, "centroid_distances.npy")
+            if os.path.exists(distances_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
+
+        distances_file_path = os.path.join(path, "centroid_distances.npy")
         if not update:
             console_log("Loading the distances matrix...")
             start_time = time()
@@ -394,7 +464,7 @@ class PlagueSpread3D(Scene3D):
         else:
             console_log("Need to calculate the distances matrix...")
             start_time = time()
-            centroid_distances_matrix = self.calculate_distances_matrix()
+            centroid_distances_matrix = self.calculate_distances_matrix_optimized(self.centroids, self.adjacency_matrix) # self.calculate_distances_matrix()
             end_time = time()
             console_log(f"Distances matrix calculated in {end_time - start_time} seconds.")
             console_log("Saving the distances matrix...")
@@ -409,7 +479,15 @@ class PlagueSpread3D(Scene3D):
     def create_shortest_paths_matrix(self, update:bool=False):
         '''Creates a matrix of shortest paths between the centroids of the triangles.'''
         shortest_paths_matrix = None
-        path = os.path.join(os.path.dirname(__file__), "resources")
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            shortest_paths_100_file_path = os.path.join(path, "shortest_paths.npy")
+            if os.path.exists(shortest_paths_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
         shortest_paths_file_path = os.path.join(path, "shortest_paths.npy")
         if not update:
             console_log("Loading the shortest paths matrix...")

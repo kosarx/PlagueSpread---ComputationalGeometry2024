@@ -177,12 +177,11 @@ def barycentric_interpolate_height(points, z_values, SIZE, x_min, x_max):
     z = l1 * v0[:, 2] + l2 * v1[:, 2] + l3 * v2[:, 2]
     return z
 
-def calculate_triangle_centroid(points):
-    '''Calculates the centroid of a triangle given its vertices.'''
-    if type(points) != isinstance(points, np.ndarray):
-        points = np.array(points)
-    centroid = np.mean(points, axis=0)
-    return centroid
+def calculate_triangle_centroids(triangle_indices, grid_points):
+    '''Calculates the centroids of multiple triangles given their vertices.'''
+    triangles = grid_points[triangle_indices]  # Extract the vertices of all triangles
+    centroids = np.mean(triangles, axis=1)     # Calculate the centroid of each triangle
+    return centroids
 
 if __name__ == "__main__":
     # test the functions

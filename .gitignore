@@ -1,6 +1,12 @@
 note.txt
 testing.py
 
+plagueSpread/resources/grid_100/grid.npy
+plagueSpread/resources/grid_100/adjacency.npy
+plagueSpread/resources/grid_100/centroids.npy
+plagueSpread/resources/grid_100/centroid_distances.npy
+plagueSpread/resources/grid_100/shortest_paths.npy
+
 # Ignore build output
 build/
 dist/
