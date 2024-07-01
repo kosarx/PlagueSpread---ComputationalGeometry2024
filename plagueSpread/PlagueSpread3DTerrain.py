@@ -49,32 +49,31 @@ class PlagueSpread3D(Scene3D):
         self.scenario_parameters_init()
 
         # setting up grid essentials
-        self.create_grid() 
-        self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1)
-        centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update,\
-              self.el_dist_matrix_need_update, self.el_short_paths_need_update = self.perform_file_checks()
-        self.calculate_centroids(centroids_need_update)
-        self.create_centroids_kd_tree()
-        self.create_adjacency_matrix(adj_need_update)
-        self.create_distances_matrix(dist_need_update) # centroid distances matrix is the graph for Dijkstra
-        self.create_shortest_paths_matrix(short_paths_need_update)
+        self.load_terrain()
+        self.create_grid() if not self.mesh else None
+        self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1) if not self.mesh else None
+        # centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update,\
+        #       self.el_dist_matrix_need_update, self.el_short_paths_need_update = self.perform_file_checks()
+        # self.calculate_centroids(centroids_need_update)
+        # self.create_centroids_kd_tree()
+        # self.create_adjacency_matrix(adj_need_update)
+        # self.create_distances_matrix(dist_need_update) # centroid distances matrix is the graph for Dijkstra
+        # self.create_shortest_paths_matrix(short_paths_need_update)
         console_log("Terrain set up\n-----------------")
 
-        self.construct_scenario() if not self.TRIAL_MODE else self.construct_mini_scenario()
-        if self.wells_pcd.points.size > 1:
-            self.Voronoi = self.getVoronoi(self.wells_pcd.points)
+        # self.construct_scenario() if not self.TRIAL_MODE else self.construct_mini_scenario()
+        # if self.wells_pcd.points.size > 1:
+        #     self.Voronoi = self.getVoronoi(self.wells_pcd.points)
 
 
-        self._print_instructions()
-        self.my_mouse_pos = Point3D((0, 0, 0))
-        self.addShape(self.my_mouse_pos, "mouse")
+        # self._print_instructions()
+        # self.my_mouse_pos = Point3D((0, 0, 0))
+        # self.addShape(self.my_mouse_pos, "mouse")
 
-        # self.DEBUG = True
-        # self._check_grid_mismatch(20) if self.DEBUG else None
-        # self._check_grid_mismatch(682) if self.DEBUG else None
-        # self._show_matrices() if self.DEBUG else None
-        # self.addShape(Point3D(self.centroids[546], size=1, color=Color.RED), "centroid_549")
-        # self._show_path(680, 546) if self.DEBUG else None
+        self.addShape(Point3D((-1, -1, 0), size=1, color=Color.RED), "down_left")
+        self.addShape(Point3D((1, 1, 0), size=1, color=Color.GREEN), "up_right")
+        self.addShape(Point3D((1, -1, 0), size=1, color=Color.BLUE), "down_right")
+        self.addShape(Point3D((-1, 1, 0), size=1, color=Color.YELLOW), "up_left")
 
     def _check_grid_mismatch(self, idx):
         '''Check if get_triangles_of_grid_points and self.triangle_indices are consistent.'''
@@ -126,23 +125,23 @@ class PlagueSpread3D(Scene3D):
         #             p2 = self.centroids[j]
         #             self.addShape(Line3D(p1, p2, color=Color.RED), f"adj_{i}_{j}")
         
-        list_of_names = []
-        el_dist_matrix = self.create_elevation_distance_matrix()
-        for i in range(len(el_dist_matrix)):
-            for j in range(len(el_dist_matrix)):
-                if el_dist_matrix[i, j] != 0:
-                    p1 = self.centroids[i]
-                    p2 = self.centroids[j]
-                    names = f"elev_{i}_{j}"
-                    list_of_names.append(names)
-                    self.addShape(Line3D(p1, p2, width=0.5 ,color=color), names)
-
         # list_of_names = []
-        # for i in range(len(self.centroids)):
-        #     p1 = self.centroids[i]
-        #     names = f"centroid_{i}"
-        #     list_of_names.append(names)
-        #     self.addShape(Point3D(p1, size=0.1, color=Color.RED), names)
+        # el_dist_matrix = self.create_elevation_distance_matrix()
+        # for i in range(len(el_dist_matrix)):
+        #     for j in range(len(el_dist_matrix)):
+        #         if el_dist_matrix[i, j] != 0:
+        #             p1 = self.centroids[i]
+        #             p2 = self.centroids[j]
+        #             names = f"elev_{i}_{j}"
+        #             list_of_names.append(names)
+        #             self.addShape(Line3D(p1, p2, width=0.5 ,color=color), names)
+
+        list_of_names = []
+        for i in range(len(self.centroids)):
+            p1 = self.centroids[i]
+            names = f"centroid_{i}"
+            list_of_names.append(names)
+            self.addShape(Point3D(p1, size=0.1, color=Color.RED), names)
 
         return list_of_names
 
@@ -180,6 +179,43 @@ class PlagueSpread3D(Scene3D):
             self.addShape(Line3D(p1, p2, color=Color.YELLOWGREEN), name)
         
         return list_of_names
+
+    def load_terrain(self):
+        '''Load the terrain from a saved terrain.'''
+        console_log("Loading the terrain from the saved obj...")
+        terrain_path = os.path.join(os.path.dirname(__file__), "resources", "terrain.obj")
+        start_time = time()
+        self.mesh = Mesh3D(terrain_path, color=Color.GREY)
+        end_time = time()
+        console_log(f"Terrain loaded in {end_time - start_time} seconds.")
+        
+        self.mesh.remove_duplicated_vertices()
+        self.mesh.remove_unreferenced_vertices()
+        vertices = self.mesh.vertices
+        vertices -= np.mean(vertices, axis=0) # center the mesh
+        distanceSq = (vertices ** 2).sum(axis=-1) # calculate the squared distance
+        max_dist = np.sqrt(np.max(distanceSq)) # get the maximum distance
+        self.mesh.vertices = vertices / max_dist # normalize the vertices
+        self.mesh.vertices *= 1.5 # scale the mesh
+        # Corners
+        # Min: (-1.0504099513130472, -0.14137424978632518, -1.0066074624794825), 
+        # Max: (1.0217544773397103, 0.22599769287879068, 1.0655569661732747)
+        # rotate the mesh 90 degrees around the x-axis
+        rotation_matrix_x = np.array([
+            [1, 0, 0],
+            [0, 0, -1],
+            [0, 1, 0]
+        ])
+        self.mesh.vertices = np.dot(self.mesh.vertices, rotation_matrix_x.T)
+        self.addShape(self.mesh, "mesh")
+
+        self.wireframe = LineSet3D.create_from_mesh(self.mesh)
+        self.addShape(self.wireframe, "wireframe")
+
+        pointset_size = 1 if self.GRID_SIZE < 50 else 0.5
+        self.grid = PointSet3D(self.mesh.vertices, size=pointset_size, color=Color.GREY)
+        self.grid_lines = self.wireframe # synonym
+        self.triangle_indices = self.mesh.triangles
 
     def create_grid(self):
         '''Creates a 3D grid on the z=0 plane'''
@@ -244,9 +280,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(grid_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
         grid_file_path = os.path.join(path, "grid.npy")
 
         # check if grid.npy exists
@@ -370,9 +406,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(centroids_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
         centroids_file_path = os.path.join(path, "centroids.npy")
         # map_file_path = os.path.join(path, "centroid_to_triangle_index_map.pkl") # DEPRECATED
         if not update:
@@ -465,9 +501,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(adj_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
 
         adj_file_path = os.path.join(path, "adjacency.npy")
         if not update:
@@ -533,9 +569,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(distances_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
 
         distances_file_path = os.path.join(path, "centroid_distances.npy")
         if not update:
@@ -568,9 +604,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(shortest_paths_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
         shortest_paths_file_path = os.path.join(path, "shortest_paths.npy")
         if not update:
             console_log("Loading the shortest paths matrix...")
@@ -630,9 +666,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(elev_dist_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
         elev_dist_file_path = os.path.join(path, "elevation_distances.npy")
         if not update:
             console_log("Loading the elevation distance matrix...")
@@ -668,9 +704,9 @@ class PlagueSpread3D(Scene3D):
             if os.path.exists(shortest_paths_100_file_path):
                 pass # success
             else:
-                path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
         else:
-            path = os.path.join(os.path.dirname(__file__), "resources", "grid")
+            path = os.path.join(os.path.dirname(__file__), "resources")
         shortest_paths_file_path = os.path.join(path, "elevated_shortest_paths.npy")
         if not update:
             console_log("Loading the elevated shortest paths matrix...")
@@ -906,7 +942,7 @@ class PlagueSpread3D(Scene3D):
                 self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
                 self.updateShape("grid")
                 self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
-                self.updateShape("grid_lines") 
+                self.updateShape("grid_lines") if self.mesh is not None else self.updateShape("wireframe")
             if symbol == Key.LEFT and modifiers & Key.MOD_ALT:
                 self.current_color_pointer -= 1
                 self.current_color_pointer %= 12
@@ -914,14 +950,14 @@ class PlagueSpread3D(Scene3D):
                 self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
                 self.updateShape("grid")
                 self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
-                self.updateShape("grid_lines") 
+                self.updateShape("grid_lines") if self.mesh is not None else self.updateShape("wireframe")
                 
             if symbol == Key.SPACE and modifiers & Key.MOD_ALT:
                 self.DEBUG = False
                 self.grid.colors = np.full_like(self.grid.colors, Color.GRAY)
                 self.updateShape("grid")
                 self.grid_lines.colors = np.full_like(self.grid_lines.colors, Color.GRAY)
-                self.updateShape("grid_lines") 
+                self.updateShape("grid_lines") if self.mesh is not None else self.updateShape("wireframe")
                 for name in self.debug_names:
                     self.removeShape(name)
             
@@ -937,6 +973,7 @@ class PlagueSpread3D(Scene3D):
         self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 50, 80
         self.grid = None
         self.grid_lines = None
+        self.mesh = None
         self.bbx =[[-1, -1, 0], [1, 1, 0]]
         self.bound = None
         self.Voronoi = None
