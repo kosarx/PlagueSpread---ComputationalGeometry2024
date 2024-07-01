@@ -6,6 +6,7 @@ sys.path.append(os.path.join(current_path, "plagueSpread", "Voronoi"))
 
 from plagueSpread.PlagueSpread2D import PlagueSpread2D
 from plagueSpread.PlagueSpread3D import PlagueSpread3D
+from plagueSpread.PlagueSpread3DTerrain import PlagueSpread3DTerrain
 
 # WIDTH_2D = 1024
 # HEIGHT_2D = 768
@@ -29,6 +30,7 @@ class MainClass:
             if not self.option:
                 print("> Press 1 to run the 2D Plague Spread simulation.")
                 print("> Press 2 to run the 3D Plague Spread simulation.")
+                print("> Press 3 to run the 3D with Terrain Plague Spread simulation.")
                 print("> Press -1 or q to exit.")
                 self.option = input("> ")
             selection = self.option
@@ -47,6 +49,16 @@ class MainClass:
                 try:
                     self.plagueSpread3D = PlagueSpread3D(WIDTH_3D, HEIGHT_3D)
                     self.plagueSpread3D.mainLoop()
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+                    print("Please try running the 2D simulation first, then the 3D.")
+                    break
+                if self.end_immediately:
+                    break
+            elif selection == "3" or selection == 3:
+                try:
+                    self.plagueSpread3DTerrain = PlagueSpread3DTerrain(WIDTH_3D, HEIGHT_3D)
+                    self.plagueSpread3DTerrain.mainLoop()
                 except Exception as e:
                     print(f"An error occurred: {e}")
                     print("Please try running the 2D simulation first, then the 3D.")

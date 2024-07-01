@@ -41,7 +41,7 @@ DEBUG = True # False
 CONSOLE_TALK = True # False
 TRIAL_MODE = False # False
 
-class PlagueSpread3D(Scene3D):
+class PlagueSpread3DTerrain(Scene3D):
     def __init__(self, WIDTH, HEIGHT):
         super().__init__(WIDTH, HEIGHT, "Plague Spread 3D", output=True, n_sliders=2)
         self._scenario_mode_init()
@@ -1729,5 +1729,5 @@ def console_log(*args):
         print(*args)   
 
 if __name__ == "__main__":
-    app = PlagueSpread3D(1400, 800)
+    app = PlagueSpread3DTerrain(1400, 800)
     app.mainLoop()
