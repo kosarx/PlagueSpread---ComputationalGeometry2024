@@ -3,3 +3,10 @@ and are a hefty ~8 GB. The program will check if
 grid size generated is 100x100 and will try to 
 fetch from this folder. If it fails, it will
 calculate and store them as normal.
+- adjacency.npy
+- centroid_distances.npy
+- centroids.npy
+- elevated_shortest_paths.npy
+- elevation_distances.npy
+- grid.npy
+- shortest_paths.npy

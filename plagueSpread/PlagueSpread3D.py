@@ -51,7 +51,8 @@ class PlagueSpread3D(Scene3D):
         # setting up grid essentials
         self.create_grid()
         self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1)
-        centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update = self.perform_file_checks()
+        centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update,\
+              self.el_dist_matrix_need_update, self.el_short_paths_need_update = self.perform_file_checks()
         self.calculate_centroids(centroids_need_update)
         self.create_centroids_kd_tree()
         self.create_adjacency_matrix(adj_need_update)
@@ -68,19 +69,16 @@ class PlagueSpread3D(Scene3D):
         self.my_mouse_pos = Point3D((0, 0, 0))
         self.addShape(self.my_mouse_pos, "mouse")
 
-        # self.DEBUG = True
-        # self._check_grid_mismatch(0) if self.DEBUG else None
-        # self._check_grid_mismatch(1) if self.DEBUG else None
-        # self._check_grid_mismatch(2) if self.DEBUG else None
+        self.DEBUG = True
         # self._check_grid_mismatch(20) if self.DEBUG else None
         # self._check_grid_mismatch(21) if self.DEBUG else None
         # self._check_grid_mismatch(22) if self.DEBUG else None
         # self._check_grid_mismatch(680) if self.DEBUG else None
         # self._check_grid_mismatch(681) if self.DEBUG else None
         # self._check_grid_mismatch(682) if self.DEBUG else None
-        # self._check_grid_mismatch(685) if self.DEBUG else None
-        # self._check_grid_mismatch(686) if self.DEBUG else None
-        # self._check_grid_mismatch(117) if self.DEBUG else None
+        # self._show_matrices() if self.DEBUG else None
+        # self.addShape(Point3D(self.centroids[546], size=1, color=Color.RED), "centroid_549")
+        # self._show_path(680, 546) if self.DEBUG else None
 
     def _check_grid_mismatch(self, idx):
         '''Check if get_triangles_of_grid_points and self.triangle_indices are consistent.'''
@@ -122,6 +120,61 @@ class PlagueSpread3D(Scene3D):
 
         self.addShape(Point3D([ 0.19731697, -0.68796272, -0.14163439], size=0.2, color=Color.ORANGE), f"p_{idx}")
 
+    def _show_matrices(self, color=Color.BLACK):
+        '''Add the adjacenct triangles to the scene.'''
+        # adjacency_matrix = self.adjacency_matrix
+        # for i in range(len(adjacency_matrix)):
+        #     for j in range(len(adjacency_matrix)):
+        #         if adjacency_matrix[i, j] == 1:
+        #             p1 = self.centroids[i]
+        #             p2 = self.centroids[j]
+        #             self.addShape(Line3D(p1, p2, color=Color.RED), f"adj_{i}_{j}")
+        list_of_names = []
+        el_dist_matrix = self.create_elevation_distance_matrix()
+        for i in range(len(el_dist_matrix)):
+            for j in range(len(el_dist_matrix)):
+                if el_dist_matrix[i, j] != 0:
+                    p1 = self.centroids[i]
+                    p2 = self.centroids[j]
+                    names = f"elev_{i}_{j}"
+                    list_of_names.append(names)
+                    self.addShape(Line3D(p1, p2, width=0.5 ,color=color), names)
+        return list_of_names
+
+    def _show_path(self, start, end):
+        '''Show the shortest path between two vertices.'''
+        if not hasattr(self, "dijkstra"):
+            centroid_distances_matrix = self.centroid_distances_matrix
+            dijkstra = Dijkstra(centroid_distances_matrix)
+            dijkstra.calculate_shortest_paths_from_vertex(start)
+            shortest_costs = dijkstra.get_distances()
+            shortest_paths = dijkstra.get_shortest_path(start, end)
+        else:
+            shortest_paths = self.dijkstra.get_shortest_path(start, end)
+
+        list_of_names = []
+        for i in range(len(shortest_paths) - 1):
+            p1 = self.centroids[shortest_paths[i]]
+            p2 = self.centroids[shortest_paths[i + 1]]
+            name = f"shortest_{i}"
+            list_of_names.append(name)
+            self.addShape(Line3D(p1, p2, color=Color.RED), name)
+        
+        if self.elevation_distance_matrix is None:
+            elevation_distance_matrix = self.create_elevation_distance_matrix()
+            dijkstra_elev = Dijkstra(elevation_distance_matrix)
+            dijkstra_elev.calculate_shortest_paths_from_vertex(start)
+            # shortest_costs_elev = dijkstra_elev.get_distances()
+
+        shortest_paths_elev = self.dijkstra.get_shortest_path(start, end)
+        for i in range(len(shortest_paths_elev) - 1):
+            p1 = self.centroids[shortest_paths_elev[i]]
+            p2 = self.centroids[shortest_paths_elev[i + 1]]
+            name = f"shortest_elev_{i}"
+            list_of_names.append(name)
+            self.addShape(Line3D(p1, p2, color=Color.YELLOWGREEN), name)
+        
+        return list_of_names
 
     def create_grid(self):
         '''Creates a 3D grid on the z=0 plane'''
@@ -137,7 +190,8 @@ class PlagueSpread3D(Scene3D):
 
         # Combine x, y, and z coordinates
         grid = np.column_stack([grid_x_flat, grid_y_flat, z_values])
-        grid = PointSet3D(grid, size=1, color=self.GRID_COLOR)
+        pointset_size = 1 if self.GRID_SIZE < 50 else 0.5
+        grid = PointSet3D(grid, size=pointset_size, color=self.GRID_COLOR)
         self.grid = grid
         self.addShape(self.grid, "grid")
 
@@ -162,7 +216,9 @@ class PlagueSpread3D(Scene3D):
             for j in range(3):
                 line_indices.append((triangle_index[j], triangle_index[(j + 1) % 3]))
 
-        lineset = LineSet3D(grid, line_indices, color=self.GRID_COLOR)
+        lineset_width = 1 if self.GRID_SIZE < 50 else 0.5
+        lineset = LineSet3D(grid, line_indices, width=lineset_width,color=self.GRID_COLOR)
+        self.grid_lines = lineset
         # add the lineset to the scene
         self.addShape(lineset, "grid_lines")
 
@@ -173,6 +229,8 @@ class PlagueSpread3D(Scene3D):
         update_distances = True
         update_adjacency = True
         update_shortest_paths = True
+        update_elevation_distances = True
+        update_elevated_shortest_paths = True
 
         # file paths
         if self.GRID_SIZE == 100:
@@ -210,7 +268,8 @@ class PlagueSpread3D(Scene3D):
             if not is_same_grid:
                 console_log("Grid has changed, storing new one...\n---------")
                 np.save(grid_file_path, self.grid.points)
-                return update_centroids, update_distances, update_adjacency, update_shortest_paths
+                return update_centroids, update_distances, update_adjacency, update_shortest_paths,\
+                      update_elevation_distances, update_elevated_shortest_paths 
         # else, if the grid file didn't exist, we've already assured that the grid is the same as the saved grid
         else:
             is_same_grid = True
@@ -275,8 +334,27 @@ class PlagueSpread3D(Scene3D):
         elif not os.path.exists(shortest_paths_file_path) and is_same_grid:
             console_log("Shortest paths do not exist, grid hasn't changed.")
             update_shortest_paths = True
+
+        console_log("Checking if the elevation distance matrix exists...")
+        elev_dist_file_path = os.path.join(path, "elevation_distances.npy")
+        # if the grid is the same as the saved grid, and we have the elevation distances saved, load them
+        if os.path.exists(elev_dist_file_path) and is_same_grid:
+            console_log("Elevation distances exist, grid hasn't changed.")
+            update_elevation_distances = False
+        # else, if the grid is the same as the saved grid but we don't have the elevation distances saved, calculate them, save them, and load them
+        elif not os.path.exists(elev_dist_file_path) and is_same_grid:
+            console_log("Elevation distances do not exist, grid hasn't changed.")
+            update_elevation_distances = True
+
+        console_log("Checking if the elevated shortest paths exist...")
+        elev_shortest_paths_file_path = os.path.join(path, "elevated_shortest_paths.npy")
+        # if the grid is the same as the saved grid, and we have the elevated shortest paths saved, load them
+        if os.path.exists(elev_shortest_paths_file_path) and is_same_grid:
+            console_log("Elevated shortest paths exist, grid hasn't changed.")
+            update_elevated_shortest_paths = False
         
-        return update_centroids, update_distances, update_adjacency, update_shortest_paths
+        return update_centroids, update_distances, update_adjacency, update_shortest_paths,\
+              update_elevation_distances, update_elevated_shortest_paths
     
     def calculate_centroids(self, update:bool=False):
         '''Calculates the centroids of the triangles.'''
@@ -513,6 +591,106 @@ class PlagueSpread3D(Scene3D):
         self.shortest_paths_matrix = shortest_paths_matrix
         return shortest_paths_matrix
     
+    def calculate_elevation_distance_matrix(self, centroids, adjacency_matrix, uphill_weight=1, downhill_weight=1):
+        '''Calculates the elevation distance matrix between the centroids of the triangles.'''
+        num_centroids = len(centroids)
+        elevation_distance_matrix = np.zeros((num_centroids, num_centroids))
+
+        for i in tqdm(range(num_centroids), desc="Calculating elevation distances", leave=True):
+            adjacent_indices = np.where(adjacency_matrix[i] == 1)[0]
+            # Horizontal distances in the x and y plane
+            horizontal_distances = np.linalg.norm(centroids[i][:2] - centroids[adjacent_indices][:, :2], axis=1)
+            # Elevation differences
+            delta_z = -(centroids[i][2] - centroids[adjacent_indices][:, 2]) # direction of uphill or downhill decided by the sign
+            # positive sign means downhill (z_i > z_adj) and negative sign means uphill (z_i < z_adj)
+            downhill_values = delta_z > 0
+            vertical_distances = np.copy(delta_z)
+            vertical_distances[downhill_values] = -downhill_weight * delta_z[downhill_values] # reduce the gain for downhill movement
+            vertical_distances[~downhill_values] = uphill_weight * np.abs(delta_z[~downhill_values])
+            # Calculate the elevation distance
+            elevation_distance_matrix[i, adjacent_indices] = horizontal_distances + vertical_distances
+
+        console_log(f"Shape of the elevation distance matrix: {elevation_distance_matrix.shape}")
+        return elevation_distance_matrix
+    
+    def create_elevation_distance_matrix(self, update:bool=False):
+        '''Creates the elevation distance matrix between the centroids of the triangles.'''
+        if self.elevation_distance_matrix is not None:
+            return self.elevation_distance_matrix
+        
+        elevation_distance_matrix = None
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            elev_dist_100_file_path = os.path.join(path, "elevation_distances.npy")
+            if os.path.exists(elev_dist_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
+        elev_dist_file_path = os.path.join(path, "elevation_distances.npy")
+        if not update:
+            console_log("Loading the elevation distance matrix...")
+            start_time = time()
+            elevation_distance_matrix = np.load(elev_dist_file_path)
+            end_time = time()
+            console_log(f"Elevation distance matrix loaded in {end_time - start_time} seconds.")
+        else:
+            console_log("Calculating the elevation distance matrix...")
+            start_time = time()
+            elevation_distance_matrix = self.calculate_elevation_distance_matrix(self.centroids, self.adjacency_matrix,\
+                                                                                  uphill_weight=5, downhill_weight=0.5) 
+            end_time = time()
+            console_log(f"Elevation distance matrix calculated in {end_time - start_time} seconds.")
+            console_log("Saving the elevation distance matrix...")
+            start_time = time()
+            np.save(elev_dist_file_path, elevation_distance_matrix)
+            end_time = time()
+            console_log(f"Elevation distance matrix saved in {end_time - start_time} seconds.")
+
+        self.elevation_distance_matrix = elevation_distance_matrix
+        return elevation_distance_matrix
+    
+    def create_elevated_shortest_paths_matrix(self, update:bool=False):
+        '''Creates a matrix of shortest paths between the centroids of the triangles.'''
+        if self.elevated_shortest_paths_matrix is not None:
+            return self.elevated_shortest_paths_matrix
+        
+        shortest_paths_matrix = None
+        if self.GRID_SIZE == 100:
+            path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
+            shortest_paths_100_file_path = os.path.join(path, "elevated_shortest_paths.npy")
+            if os.path.exists(shortest_paths_100_file_path):
+                pass # success
+            else:
+                path=os.path.join(os.path.dirname(__file__), "resources") # revert
+        else:
+            path = os.path.join(os.path.dirname(__file__), "resources")
+        shortest_paths_file_path = os.path.join(path, "elevated_shortest_paths.npy")
+        if not update:
+            console_log("Loading the elevated shortest paths matrix...")
+            start_time = time()
+            shortest_paths_matrix = np.load(shortest_paths_file_path, allow_pickle=True)
+            end_time = time()
+            console_log(f"Elevated shortest paths matrix loaded in {end_time - start_time} seconds.")
+        else:
+            console_log("Calculating the shortest paths matrix...")
+            start_time = time()
+            self.dijkstra = Dijkstra(self.elevation_distance_matrix) # Dijkstra object for finding shortest paths between centroids with elevation
+            self.dijkstra.calculate_all_shortest_paths()
+            shortest_paths_matrix = self.dijkstra.get_distances()
+            end_time = time()
+            console_log(f"Elevated shortest paths matrix calculated in {end_time - start_time} seconds.")
+            console_log("Saving the elevated shortest paths matrix...")
+            start_time = time()
+            np.save(shortest_paths_file_path, shortest_paths_matrix)
+            end_time = time()
+            console_log(f"Shortest paths matrix saved in {end_time - start_time} seconds.")
+        
+        console_log("Shape of the elevated shortest paths matrix: ", shortest_paths_matrix.shape)
+        self.elevated_shortest_paths_matrix = shortest_paths_matrix
+        return shortest_paths_matrix
+    
     def _scenario_mode_init(self):
         self.DEBUG = DEBUG
         self.CONSOLE_TALK = CONSOLE_TALK
@@ -524,6 +702,7 @@ class PlagueSpread3D(Scene3D):
         self.terminal_log(f"Population: {self.POPULATION}, Wells: {self.WELLS}, Number of infected wells: {len(self.infected_wells_indices)}, Infected wells indices: {self.infected_wells_indices}")
         self.terminal_log(f"DENSE REGIONS: {self.DENSE_REGIONS}")
         self.terminal_log(f"EUCLIDEAN: {self.EUCLIDEAN}")
+        self.terminal_log(f"ELEVATION DIST: {self.ELEVATION_DISTANCE}")
         self.terminal_log(f"RANDOM_SELECTION: {self.RANDOM_SELECTION}")
         self.terminal_log(f"Chances of choosing the closest well: {self.P1}, Chances of choosing the second closest well: {self.P2}, Chances of choosing the third closest well: {self.P3}") if self.RANDOM_SELECTION else None
         self.terminal_log(f"Number of infected people: {len(self.infected_people_indices)}")
@@ -607,93 +786,140 @@ class PlagueSpread3D(Scene3D):
             self.WELLS = 45 if not self.TRIAL_MODE else 7
             self.reset_scene()
 
-        # print the scenario parameters
-        if symbol == Key.BACKSPACE:
-            self._console_log_scenario()
-        # reset the scene
-        if symbol == Key.ENTER:
-            self.reset_scene()
-            self._print_instructions()
-        # toggle between trial mode and normal mode
-        if symbol == Key.UP:
-            self.TRIAL_MODE = not self.TRIAL_MODE
-            version_1()
-        # increase or decrease the number of wells
-        if symbol == Key.RIGHT:
-            self.WELLS += 1
-            self.reset_scene()
-        if symbol == Key.LEFT:
-            self.WELLS -= 1
-            self.reset_scene()
-        # increase or decrease the population
-        if symbol == Key.M:
-            self.POPULATION += 100 if not self.TRIAL_MODE else 10
-            self.reset_scene()
-        if symbol == Key.N:
-            self.POPULATION -= 100 if not self.TRIAL_MODE else 10
-            self.reset_scene()
-        # toggle between dense regions
-        if symbol == Key.W:
-            self.DENSE_REGIONS = not self.DENSE_REGIONS
-            self.reset_scene()
-        if symbol == Key.E:
-            self.EUCLIDEAN = not self.EUCLIDEAN
-            self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-        # toggle between random selection and stochastic selection
-        if symbol == Key.R:
-            self.RANDOM_SELECTION = not self.RANDOM_SELECTION
-            self.P1 = 0.8
-            self.P2 = 0.15
-            self.P3 = 0.05
-            # self.reset_scene() # for some reason, resetting the scene chooses new infected well population, unlike 2D
-            self.removeShape("infected_people")
-            self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-            self._print_instructions()
-        # increase or decrease the probabilities of choosing the closest well
-        if symbol == Key.P:
-            if modifiers & Key.MOD_SHIFT:
-                self.P1 += 0.05
-                self.P2 -= 0.025
-                self.P3 -= 0.025
-            else:
-                self.P1 -= 0.05
-                self.P2 += 0.025
-                self.P3 += 0.025
-            # make sure the probabilities are between 0 and 1
-            self.P1 = 0 if self.P1 < 0 else self.P1
-            self.P1 = 1 if self.P1 > 1 else self.P1
+        if not modifiers & Key.MOD_ALT:
+            # print the scenario parameters
+            if symbol == Key.BACKSPACE:
+                self._console_log_scenario()
+            # reset the scene
+            if symbol == Key.ENTER:
+                self.reset_scene()
+                self._print_instructions()
+            # toggle between trial mode and normal mode
+            if symbol == Key.UP:
+                self.TRIAL_MODE = not self.TRIAL_MODE
+                version_1()
+            # increase or decrease the number of wells
+            if symbol == Key.RIGHT:
+                self.WELLS += 1
+                self.reset_scene()
+            if symbol == Key.LEFT:
+                self.WELLS -= 1
+                self.reset_scene()
+            # increase or decrease the population
+            if symbol == Key.M:
+                self.POPULATION += 100 if not self.TRIAL_MODE else 10
+                self.reset_scene()
+            if symbol == Key.N:
+                self.POPULATION -= 100 if not self.TRIAL_MODE else 10
+                self.reset_scene()
+            # toggle between dense regions
+            if symbol == Key.W:
+                self.DENSE_REGIONS = not self.DENSE_REGIONS
+                self.reset_scene()
+            if symbol == Key.E:
+                self.EUCLIDEAN = not self.EUCLIDEAN
+                self.removeShape("infected_people")
+                self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+            # toggle between random selection and stochastic selection
+            if symbol == Key.R:
+                self.RANDOM_SELECTION = not self.RANDOM_SELECTION
+                self.P1 = 0.8
+                self.P2 = 0.15
+                self.P3 = 0.05
+                # self.reset_scene() # for some reason, resetting the scene chooses new infected well population, unlike 2D
+                self.removeShape("infected_people")
+                self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                self._print_instructions()
+            # increase or decrease the probabilities of choosing the closest well
+            if symbol == Key.P:
+                if modifiers & Key.MOD_SHIFT:
+                    self.P1 += 0.05
+                    self.P2 -= 0.025
+                    self.P3 -= 0.025
+                else:
+                    self.P1 -= 0.05
+                    self.P2 += 0.025
+                    self.P3 += 0.025
+                # make sure the probabilities are between 0 and 1
+                self.P1 = 0 if self.P1 < 0 else self.P1
+                self.P1 = 1 if self.P1 > 1 else self.P1
 
-            self.P2 = 0 if self.P2 < 0 else self.P2
-            self.P2 = 1 if self.P2 > 1 else self.P2
+                self.P2 = 0 if self.P2 < 0 else self.P2
+                self.P2 = 1 if self.P2 > 1 else self.P2
 
-            self.P3 = 0 if self.P3 < 0 else self.P3
-            self.P3 = 1 if self.P3 > 1 else self.P3
+                self.P3 = 0 if self.P3 < 0 else self.P3
+                self.P3 = 1 if self.P3 > 1 else self.P3
 
-            # ensure the probabilities always sum to 1
-            total = self.P1 + self.P2 + self.P3
-            self.P1 /= total
-            self.P2 /= total
-            self.P3 /= total
+                # ensure the probabilities always sum to 1
+                total = self.P1 + self.P2 + self.P3
+                self.P1 /= total
+                self.P2 /= total
+                self.P3 /= total
 
-            # self.reset_scene() # for some reason, resetting the scene chooses new infected well population, unlike 2D
-            self.removeShape("infected_people")
-            self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
-        if symbol == Key.V and not modifiers & Key.MOD_SHIFT:
-            self.VORONOI_VISIBLE = not self.VORONOI_VISIBLE
-            # self.Voronoi.generate(self.wells_pcd.points, WIDTH, HEIGHT)
-            # edges = self.Voronoi.getEdges()
-            if self.Voronoi is not None and self.VORONOI_VISIBLE:
-                # self.Voronoi = self.getVoronoi(self.wells_pcd.points)
-                self.drawVoronoi()
-            else:
-                self.removeShape("Voronoi")
-                self.removeShape("Voronoi Points")
-        if symbol == Key.V and modifiers & Key.MOD_SHIFT:
-            self.COMPUTE_WITH_VORONOI = not self.COMPUTE_WITH_VORONOI
-            if self.COMPUTE_WITH_VORONOI:
-                self.Voronoi = self.getVoronoi(self.wells_pcd.points)
-            self.reset_scene()
-        # set the scenario to version 1 or 2
+                # self.reset_scene() # for some reason, resetting the scene chooses new infected well population, unlike 2D
+                self.removeShape("infected_people")
+                self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+            if symbol == Key.V and not modifiers & Key.MOD_SHIFT:
+                self.VORONOI_VISIBLE = not self.VORONOI_VISIBLE
+                # self.Voronoi.generate(self.wells_pcd.points, WIDTH, HEIGHT)
+                # edges = self.Voronoi.getEdges()
+                if self.Voronoi is not None and self.VORONOI_VISIBLE:
+                    # self.Voronoi = self.getVoronoi(self.wells_pcd.points)
+                    self.drawVoronoi()
+                else:
+                    self.removeShape("Voronoi")
+                    self.removeShape("Voronoi Points")
+            if symbol == Key.V and modifiers & Key.MOD_SHIFT:
+                self.COMPUTE_WITH_VORONOI = not self.COMPUTE_WITH_VORONOI
+                if self.COMPUTE_WITH_VORONOI:
+                    self.Voronoi = self.getVoronoi(self.wells_pcd.points)
+                self.reset_scene()
+            # use the elevation distance function
+            if symbol == Key.G:
+                self.ELEVATION_DISTANCE = not self.ELEVATION_DISTANCE
+                self.create_elevation_distance_matrix(self.el_dist_matrix_need_update)
+                self.create_elevated_shortest_paths_matrix(self.el_short_paths_need_update)
+                # self.reset_scene()
+                self.removeShape("infected_people")
+                self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+        else:
+            ## debug
+            roster_colors = [Color.RED, Color.BLUE, Color.GREEN,\
+                                Color.CYAN, Color.WHITE, Color.BLACK,\
+                                Color.GREEN, Color.YELLOW, Color.DARKRED,\
+                                Color.DARKGREEN, Color.YELLOWGREEN, Color.GRAY]
+            if symbol == Key.UP and modifiers & Key.MOD_ALT:
+                self.DEBUG = not self.DEBUG
+                if self.DEBUG:
+                    names = self._show_matrices(roster_colors[self.current_color_pointer])
+                    for name in names:
+                        self.debug_names.append(name)
+            if symbol == Key.RIGHT and modifiers & Key.MOD_ALT:
+                self.current_color_pointer += 1
+                self.current_color_pointer = self.current_color_pointer % 12
+                
+                self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
+                self.updateShape("grid")
+                self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
+                self.updateShape("grid_lines")
+            if symbol == Key.LEFT and modifiers & Key.MOD_ALT:
+                self.current_color_pointer -= 1
+                self.current_color_pointer %= 12
+    
+                self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
+                self.updateShape("grid")
+                self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
+                self.updateShape("grid_lines")
+                
+            if symbol == Key.SPACE and modifiers & Key.MOD_ALT:
+                self.grid.colors = np.full_like(self.grid.colors, Color.GRAY)
+                self.updateShape("grid")
+                self.grid_lines.colors = np.full_like(self.grid_lines.colors, Color.GRAY)
+                self.updateShape("grid_lines")
+                for name in self.debug_names:
+                    self.removeShape(name)
+            
+        # set the scenario to version 1 or 2 or 3
         if symbol == Key._1:
             version_1()
         if symbol == Key._2:
@@ -721,12 +947,18 @@ class PlagueSpread3D(Scene3D):
         self.RANDOM_SELECTION = False
         self.DENSE_REGIONS = False
         self.EUCLIDEAN = False
+        self.ELEVATION_DISTANCE = False
+        self.elevation_distance_matrix = None # for check
+        self.elevated_shortest_paths_matrix = None # for check
         # self.VORONOI_ACTIVE = False
         self.VORONOI_VISIBLE = False
         self.COMPUTE_WITH_VORONOI = False
+        self.debug_names = []
 
         # colors
+        self.current_color_pointer = 11
         self.GRID_COLOR = Color.GREY
+        self.HELPER_COLOR = Color.BLACK
         self.healthy_population_color = Color.BLUE
         self.infected_population_color = Color.YELLOW
         self.healthy_wells_color = Color.GREEN
@@ -741,15 +973,17 @@ class PlagueSpread3D(Scene3D):
         self.print("> 1 or 2: scenario version 1 or 2.")
         self.print("> W: toggle dense regions.")
         self.print("> E: toggle geodesic or euclidean")
+        self.print("> G: consider elevation distances.")
         self.print("> V: toggle Voronoi diagram.")
         self.print("> SHIFT + V: use Voronoi diagram for computations.")
-        self.print("> LEFT MOUSE BUTTON: add, remove a well.")
-        self.print("> RIGHT MOUSE BUTTON: infect, disinfect a well.")
+        self.print("> SHIFT + MOUSELEFT: add, remove a well.")
+        self.print("> SHIFT + MOUSERIGHT: infect, disinfect a well.")
         self.print("> R: toggle between deterministic, stochastic scenario.")
         if self.RANDOM_SELECTION:
             self.print(">-> P: reduce probability of closest well.")
             self.print(">-> SHIFT + P: increase probability of closest well.")
 
+        # print and not console_log because we want the instructions to appear either way
         print("--> Press ENTER to reset the scene & print instructions.")
         print("--> Press BACKSPACE to print the scenario parameters.")
         print("--> Press UP to toggle between trial mode and normal mode.")
@@ -758,10 +992,11 @@ class PlagueSpread3D(Scene3D):
         print("--> Press 1 or 2 to set the scenario to version 1 or 2.")
         print("--> Press W to toggle dense regions of the population.")
         print("--> Press E to toggle between geodesic and euclidean distances.")
+        print("--> Press G to consider the elevation in distance calculations.")
         print("--> Press V to toggle the Voronoi diagram.")
         print("--> Press SHIFT + V to use the Voronoi diagram for computations.")
-        print("--> Press LEFT MOUSE BUTTON to add or remove a well.")
-        print("--> Press RIGHT MOUSE BUTTON to infect or disinfect a well.")
+        print("--> Press SHIFT + LEFT MOUSE BUTTON to add or remove a well.")
+        print("--> Press SHIFT + LEFT MOUSE BUTTON to infect or disinfect a well.")
         print("--> Press R to toggle between deterministic and stochastic scenario.")
         if self.RANDOM_SELECTION:
             print("-->---> Press P to reduce the probability of choosing the closest well.")
@@ -1200,7 +1435,10 @@ class PlagueSpread3D(Scene3D):
         # calculate the euclidean distances between the wells and the centroids of the triangles
         wells_to_centroids_distances = np.linalg.norm(wells - wells_centroids, axis=1)
         # get the shortest distances between the person and the wells
-        shortest_distances_to_wells = self.shortest_paths_matrix[person_triangle_index, wells_triangle_indices]
+        if not self.ELEVATION_DISTANCE:
+            shortest_distances_to_wells = self.shortest_paths_matrix[person_triangle_index][wells_triangle_indices]
+        else:
+            shortest_distances_to_wells = self.elevated_shortest_paths_matrix[person_triangle_index][wells_triangle_indices]
         # calculate the total distances
         total_distances = person_to_centroid_distance + shortest_distances_to_wells + wells_to_centroids_distances
 
@@ -1241,10 +1479,10 @@ class PlagueSpread3D(Scene3D):
     
             # for every person in the population, check if the closest well to them is infected
             for i, person in enumerate(tqdm(population_nparray, desc="For all people, infect:")):
-                if not self.EUCLIDEAN:
-                    closest_well_index = self.find_closest_well_index_geodesic(person, wells_nparray, wells_triangle_index) 
-                else:
+                if self.EUCLIDEAN and not self.ELEVATION_DISTANCE:
                     closest_well_index = self.find_closest_well_index_kd_tree(person, wells_nparray) 
+                else:
+                    closest_well_index = self.find_closest_well_index_geodesic(person, wells_nparray, wells_triangle_index) 
                 # if the closest well is infected, infect the person
                 if closest_well_index in self.infected_wells_indices:
                     population_color_nparray[i] = self.infected_population_color
@@ -1345,7 +1583,10 @@ class PlagueSpread3D(Scene3D):
         # calculate the euclidean distances between the wells and the centroids of the triangles
         wells_to_centroids_distances = np.linalg.norm(wells - wells_centroids, axis=1)
         # get the shortest distances between the person and the wells
-        shortest_distances_to_wells = self.shortest_paths_matrix[person_triangle_index, wells_triangle_indices]
+        if not self.ELEVATION_DISTANCE:
+            shortest_distances_to_wells = self.shortest_paths_matrix[person_triangle_index][wells_triangle_indices]
+        else:
+            shortest_distances_to_wells = self.elevated_shortest_paths_matrix[person_triangle_index][wells_triangle_indices]
         # calculate the total distances
         total_distances = person_to_centroid_distance + shortest_distances_to_wells + wells_to_centroids_distances
 
@@ -1413,10 +1654,10 @@ class PlagueSpread3D(Scene3D):
         # slow
         # population_color_nparray = self.find_stochastic_infected_linear(population_nparray, population_color_nparray, wells_nparray)
 
-        if not self.EUCLIDEAN:
-            population_color_nparray = self.find_stochastic_infected_geodesic(population_nparray, population_color_nparray, wells_nparray)
-        else:
+        if self.EUCLIDEAN and not self.ELEVATION_DISTANCE:
             population_color_nparray = self.find_stochastic_infected_euclidean(population_nparray, population_color_nparray, wells_nparray)
+        else:
+            population_color_nparray = self.find_stochastic_infected_geodesic(population_nparray, population_color_nparray, wells_nparray)
 
         self.population_pcd.colors = population_color_nparray
         self.updateShape(self.population_pcd_name)

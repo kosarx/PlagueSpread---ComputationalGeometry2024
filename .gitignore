@@ -6,6 +6,8 @@ plagueSpread/resources/grid_100/adjacency.npy
 plagueSpread/resources/grid_100/centroids.npy
 plagueSpread/resources/grid_100/centroid_distances.npy
 plagueSpread/resources/grid_100/shortest_paths.npy
+plagueSpread/resources/grid_100/elevation_distances.npy
+plagueSpread/resources/grid_100/elevated_shortest_paths.npy
 
 # Ignore build output
 build/
