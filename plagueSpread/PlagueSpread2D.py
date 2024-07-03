@@ -67,6 +67,7 @@ class PlagueSpread2D(Scene2D):
         console_log(f"RANDOM_SELECTION: {self.RANDOM_SELECTION}")
         console_log(f"Chances of choosing the closest well: {self.P1}, Chances of choosing the second closest well: {self.P2}, Chances of choosing the third closest well: {self.P3}") if self.RANDOM_SELECTION else None
         console_log(f"Number of infected people: {len(self.infected_people_indices)}")
+        console_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
         console_log("---")
 
     def on_mouse_press(self, x, y, button, modifiers):
@@ -92,13 +93,25 @@ class PlagueSpread2D(Scene2D):
                 if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y])) < 0.05:
                     # check if the closest well is not already infected
                     if closest_well_index not in self.infected_wells_indices:
-                        # infect the closest well
+                        ## infect the closest well
+                        # get the current infected percentage
+                        infected_percentage = len(self.infected_people_indices) / self.POPULATION
                         self.infect_single_well(closest_well_index)
                         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                        # get the new infected percentage
+                        new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                        # print the percentage increase
+                        console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                     else:
-                        # disenfect the closest well
+                        ## disenfect the closest well
+                        # get the current infected percentage
+                        infected_percentage = len(self.infected_people_indices) / self.POPULATION
                         self.disinfect_single_well(closest_well_index)
                         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                        # get the new infected percentage
+                        new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                        # print the percentage decrease
+                        console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
             # else, if the left mouse button was released...
             elif button == Mouse.MOUSE1:
                 # find the closest well to the mouse position
@@ -557,6 +570,7 @@ class PlagueSpread2D(Scene2D):
             self.find_infected_people_with_voronoi()
 
         console_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
+        console_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
 
     def find_infected_people_stochastic(self):
         '''Finds the people infected by the wells in a stochastic manner.'''
@@ -586,6 +600,7 @@ class PlagueSpread2D(Scene2D):
         self.updateShape(self.population_pcd_name)
 
         console_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
+        console_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
 
     def resetVoronoi(self):
         '''Resets the Voronoi diagram.'''

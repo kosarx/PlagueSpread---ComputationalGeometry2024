@@ -12,11 +12,12 @@ import random
 random.seed(42)
 import numpy as np
 from scipy.spatial import Voronoi as SciVoronoi
+from scipy.sparse import lil_matrix, csr_matrix, load_npz, save_npz
 import matplotlib.pyplot as plt
 
 
 from plagueSpread.utils.GeometryUtils import (
-    get_triangles_of_grid_points, barycentric_interpolate_height, calculate_triangle_centroids 
+    get_triangles_of_grid_points, barycentric_interpolate_height_grid, calculate_triangle_centroids 
 )
 from plagueSpread.utils.DijkstraAlgorithm import Dijkstra
 from plagueSpread.KDTree import KdNode
@@ -43,7 +44,7 @@ TRIAL_MODE = False # False
 
 class PlagueSpread3D(Scene3D):
     def __init__(self, WIDTH, HEIGHT):
-        super().__init__(WIDTH, HEIGHT, "Plague Spread 3D", output=True, n_sliders=2)
+        super().__init__(WIDTH, HEIGHT, "Plague Spread 3D", output=True)
         self._scenario_mode_init()
 
         self.scenario_parameters_init()
@@ -58,7 +59,7 @@ class PlagueSpread3D(Scene3D):
         self.create_adjacency_matrix(adj_need_update)
         self.create_distances_matrix(dist_need_update) # centroid distances matrix is the graph for Dijkstra
         self.create_shortest_paths_matrix(short_paths_need_update)
-        console_log("Terrain set up\n-----------------")
+        console_log("Grid set up\n-----------------")
 
         self.construct_scenario() if not self.TRIAL_MODE else self.construct_mini_scenario()
         if self.wells_pcd.points.size > 1:
@@ -308,7 +309,7 @@ class PlagueSpread3D(Scene3D):
             '''
 
         console_log("Checking if the adjacency matrix exists...")
-        adj_file_path = os.path.join(path, "adjacency.npy")
+        adj_file_path = os.path.join(path, "adjacency.npz")
 
         if os.path.exists(adj_file_path) and is_same_grid:
             console_log("Adjacency matrix exists, grid hasn't changed.")
@@ -318,7 +319,7 @@ class PlagueSpread3D(Scene3D):
             update_adjacency = True
 
         console_log("Checking if the distances matrix exists...")
-        distances_file_path = os.path.join(path, "centroid_distances.npy")
+        distances_file_path = os.path.join(path, "centroid_distances.npz")
     
         # if the grid is the same as the saved grid and we have the distances matrix saved, load it
         if os.path.exists(distances_file_path) and is_same_grid:
@@ -341,7 +342,7 @@ class PlagueSpread3D(Scene3D):
             update_shortest_paths = True
 
         console_log("Checking if the elevation distance matrix exists...")
-        elev_dist_file_path = os.path.join(path, "elevation_distances.npy")
+        elev_dist_file_path = os.path.join(path, "elevation_distances.npz")
         # if the grid is the same as the saved grid, and we have the elevation distances saved, load them
         if os.path.exists(elev_dist_file_path) and is_same_grid:
             console_log("Elevation distances exist, grid hasn't changed.")
@@ -429,9 +430,9 @@ class PlagueSpread3D(Scene3D):
     def calculate_adjacency_matrix_optimized(self, triangle_indices):
         '''Calculates the adjacency matrix for the grid.'''
         num_triangles = len(triangle_indices)
-        adjacency_matrix = np.zeros((num_triangles, num_triangles))
-        
-        # create a dictionary to map edges to triangles
+        adjacency_matrix = lil_matrix((num_triangles, num_triangles), dtype=np.int8)  # for construction
+
+        # dictionary to map edges to triangles
         edge_to_triangles = {}
         
         for i, triangle in enumerate(triangle_indices):
@@ -445,14 +446,14 @@ class PlagueSpread3D(Scene3D):
                     edge_to_triangles[edge] = []
                 edge_to_triangles[edge].append(i)
         
-        # use the edge-to-triangle mapping to fill the adjacency matrix
+        # for every edge, if two triangles share the edge, they are adjacent
         for edge, triangles in tqdm(edge_to_triangles.items(), desc="Calculating adjacency matrix"):
             for i in range(len(triangles)):
                 for j in range(i + 1, len(triangles)):
                     adjacency_matrix[triangles[i], triangles[j]] = 1
                     adjacency_matrix[triangles[j], triangles[i]] = 1
         
-        return adjacency_matrix
+        return adjacency_matrix.tocsr()
 
     def create_adjacency_matrix(self, update:bool=False):
         '''Creates an adjacency matrix for the grid.'''
@@ -461,7 +462,7 @@ class PlagueSpread3D(Scene3D):
         # file paths
         if self.GRID_SIZE == 100:
             path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
-            adj_100_file_path = os.path.join(path, "adjacency.npy")
+            adj_100_file_path = os.path.join(path, "adjacency.npz")
             if os.path.exists(adj_100_file_path):
                 pass # success
             else:
@@ -469,13 +470,13 @@ class PlagueSpread3D(Scene3D):
         else:
             path = os.path.join(os.path.dirname(__file__), "resources", "grid")
 
-        adj_file_path = os.path.join(path, "adjacency.npy")
+        adj_file_path = os.path.join(path, "adjacency.npz")
         if not update:
             console_log("Adjacency matrix exists.")
             
             console_log("Loading the adjacency matrix...")
             start_time = time()
-            adjacency_matrix = np.load(adj_file_path)
+            adjacency_matrix = load_npz(adj_file_path)
             end_time = time()
             console_log(f"Adjacency matrix loaded in {end_time - start_time} seconds.")
         else:
@@ -485,7 +486,7 @@ class PlagueSpread3D(Scene3D):
             adjacency_matrix = self.calculate_adjacency_matrix_optimized(self.triangle_indices) # self.calculate_adjacency_matrix()
             console_log("Saving the adjacency matrix...")
             start_time = time()
-            np.save(adj_file_path, adjacency_matrix)
+            save_npz(adj_file_path, adjacency_matrix)
             end_time = time()
             console_log(f"Adjacency matrix saved in {end_time - start_time} seconds.")
 
@@ -513,13 +514,15 @@ class PlagueSpread3D(Scene3D):
         '''Calculates a matrix of distances between the centroids of the triangles.'''
 
         num_centroids = len(centroids)
-        distances_matrix = np.zeros((num_centroids, num_centroids))
-        
-        # calculate distances only for adjacent centroids
-        for i in tqdm(range(num_centroids), desc="Calculating distances", leave=True):
-            adjacent_indices = np.where(adjacency_matrix[i] == 1)[0]
-            distances_matrix[i, adjacent_indices] = np.linalg.norm(centroids[i] - centroids[adjacent_indices], axis=1)
+        distances_matrix = lil_matrix((num_centroids, num_centroids)) # for construction
 
+        # Calculate distances only for adjacent centroids
+        for i in tqdm(range(num_centroids), desc="Calculating distances", leave=True):
+            adjacent_indices = adjacency_matrix[i].indices
+            distances = np.linalg.norm(centroids[i] - centroids[adjacent_indices], axis=1)
+            distances_matrix[i, adjacent_indices] = distances
+
+        distances_matrix = distances_matrix.tocsr()
         console_log(f"Shape of the distances matrix: {distances_matrix.shape}")
         return distances_matrix
         
@@ -529,7 +532,7 @@ class PlagueSpread3D(Scene3D):
         
         if self.GRID_SIZE == 100:
             path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
-            distances_100_file_path = os.path.join(path, "centroid_distances.npy")
+            distances_100_file_path = os.path.join(path, "centroid_distances.npz")
             if os.path.exists(distances_100_file_path):
                 pass # success
             else:
@@ -537,11 +540,11 @@ class PlagueSpread3D(Scene3D):
         else:
             path = os.path.join(os.path.dirname(__file__), "resources", "grid")
 
-        distances_file_path = os.path.join(path, "centroid_distances.npy")
+        distances_file_path = os.path.join(path, "centroid_distances.npz")
         if not update:
             console_log("Loading the distances matrix...")
             start_time = time()
-            centroid_distances_matrix = np.load(distances_file_path)
+            centroid_distances_matrix = load_npz(distances_file_path)
             end_time = time()
             console_log(f"Distances matrix loaded in {end_time - start_time} seconds.")
         else:
@@ -552,7 +555,7 @@ class PlagueSpread3D(Scene3D):
             console_log(f"Distances matrix calculated in {end_time - start_time} seconds.")
             console_log("Saving the distances matrix...")
             start_time = time()
-            np.save(distances_file_path, centroid_distances_matrix)
+            save_npz(distances_file_path, centroid_distances_matrix)
             end_time = time()
             console_log(f"Distances matrix saved in {end_time - start_time} seconds.")
         
@@ -581,7 +584,7 @@ class PlagueSpread3D(Scene3D):
         else:
             console_log("Calculating the shortest paths matrix...")
             start_time = time()
-            self.dijkstra = Dijkstra(self.centroid_distances_matrix) # Dijkstra object for finding shortest paths between centroids
+            self.dijkstra = Dijkstra(self.centroid_distances_matrix.toarray()) # Dijkstra object for finding shortest paths between centroids
             self.dijkstra.calculate_all_shortest_paths()
             shortest_paths_matrix = self.dijkstra.get_distances()
             end_time = time()
@@ -599,10 +602,10 @@ class PlagueSpread3D(Scene3D):
     def calculate_elevation_distance_matrix(self, centroids, adjacency_matrix, uphill_weight=1, downhill_weight=1):
         '''Calculates the elevation distance matrix between the centroids of the triangles.'''
         num_centroids = len(centroids)
-        elevation_distance_matrix = np.zeros((num_centroids, num_centroids))
+        elevation_distance_matrix = lil_matrix((num_centroids, num_centroids)) # for construction
 
         for i in tqdm(range(num_centroids), desc="Calculating elevation distances", leave=True):
-            adjacent_indices = np.where(adjacency_matrix[i] == 1)[0]
+            adjacent_indices = adjacency_matrix[i].indices
             # Horizontal distances in the x and y plane
             horizontal_distances = np.linalg.norm(centroids[i][:2] - centroids[adjacent_indices][:, :2], axis=1)
             # Elevation differences
@@ -615,6 +618,7 @@ class PlagueSpread3D(Scene3D):
             # Calculate the elevation distance
             elevation_distance_matrix[i, adjacent_indices] = horizontal_distances + vertical_distances
 
+        elevation_distance_matrix = elevation_distance_matrix.tocsr()
         console_log(f"Shape of the elevation distance matrix: {elevation_distance_matrix.shape}")
         return elevation_distance_matrix
     
@@ -626,18 +630,18 @@ class PlagueSpread3D(Scene3D):
         elevation_distance_matrix = None
         if self.GRID_SIZE == 100:
             path = os.path.join(os.path.dirname(__file__), "resources", "grid_100")
-            elev_dist_100_file_path = os.path.join(path, "elevation_distances.npy")
+            elev_dist_100_file_path = os.path.join(path, "elevation_distances.npz")
             if os.path.exists(elev_dist_100_file_path):
                 pass # success
             else:
                 path=os.path.join(os.path.dirname(__file__), "resources", "grid") # revert
         else:
             path = os.path.join(os.path.dirname(__file__), "resources", "grid")
-        elev_dist_file_path = os.path.join(path, "elevation_distances.npy")
+        elev_dist_file_path = os.path.join(path, "elevation_distances.npz")
         if not update:
             console_log("Loading the elevation distance matrix...")
             start_time = time()
-            elevation_distance_matrix = np.load(elev_dist_file_path)
+            elevation_distance_matrix = load_npz(elev_dist_file_path)
             end_time = time()
             console_log(f"Elevation distance matrix loaded in {end_time - start_time} seconds.")
         else:
@@ -649,7 +653,7 @@ class PlagueSpread3D(Scene3D):
             console_log(f"Elevation distance matrix calculated in {end_time - start_time} seconds.")
             console_log("Saving the elevation distance matrix...")
             start_time = time()
-            np.save(elev_dist_file_path, elevation_distance_matrix)
+            save_npz(elev_dist_file_path, elevation_distance_matrix)
             end_time = time()
             console_log(f"Elevation distance matrix saved in {end_time - start_time} seconds.")
 
@@ -681,7 +685,7 @@ class PlagueSpread3D(Scene3D):
         else:
             console_log("Calculating the shortest paths matrix...")
             start_time = time()
-            self.dijkstra = Dijkstra(self.elevation_distance_matrix) # Dijkstra object for finding shortest paths between centroids with elevation
+            self.dijkstra = Dijkstra(self.elevation_distance_matrix.toarray()) # Dijkstra object for finding shortest paths between centroids with elevation
             self.dijkstra.calculate_all_shortest_paths()
             shortest_paths_matrix = self.dijkstra.get_distances()
             end_time = time()
@@ -711,6 +715,7 @@ class PlagueSpread3D(Scene3D):
         self.terminal_log(f"RANDOM_SELECTION: {self.RANDOM_SELECTION}")
         self.terminal_log(f"Chances of choosing the closest well: {self.P1}, Chances of choosing the second closest well: {self.P2}, Chances of choosing the third closest well: {self.P3}") if self.RANDOM_SELECTION else None
         self.terminal_log(f"Number of infected people: {len(self.infected_people_indices)}")
+        self.terminal_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
         self.terminal_log("---")
 
         # console_log("---")
@@ -744,13 +749,25 @@ class PlagueSpread3D(Scene3D):
                     if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
                         # check if the closest well is not already infected
                         if closest_well_index not in self.infected_wells_indices:
-                            # infect the closest well
+                            ## infect the closest well
+                            # get the current infected percentage
+                            infected_percentage = len(self.infected_people_indices) / self.POPULATION
                             self.infect_single_well(closest_well_index)
                             self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                            # get the new infected percentage
+                            new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                            # print the percentage increase
+                            console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                         else:
-                            # disenfect the closest well
+                            ## disenfect the closest well
+                            # get the current infected percentage
+                            infected_percentage = len(self.infected_people_indices) / self.POPULATION
                             self.disinfect_single_well(closest_well_index)
                             self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                            # get the new infected percentage
+                            new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                            # print the percentage decrease
+                            console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                 # else, if the left mouse button was released...
                 elif button == Mouse.MOUSELEFT and modifiers & Key.MOD_SHIFT:
                     # find the closest well to the mouse position
@@ -1134,13 +1151,13 @@ class PlagueSpread3D(Scene3D):
         
         # points_nparray = np.array(pointset.points)
         # for i in range(len(points_nparray)):
-        #     z = barycentric_interpolate_height(points_nparray[i], self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        #     z = barycentric_interpolate_height_grid(points_nparray[i], self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
         #     points_nparray[i][2] = z
 
         # pointset.points = points_nparray 
         
         # Vectorized call to the interpolation function
-        heights = barycentric_interpolate_height(points_nparray, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        heights = barycentric_interpolate_height_grid(points_nparray, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
         # Assign the interpolated heights to the points
         points_nparray[:, 2] = heights
 
@@ -1249,7 +1266,7 @@ class PlagueSpread3D(Scene3D):
 
         new_well = np.array([[x, y, 0]])
         # find the height of the well
-        new_well[0][2] = barycentric_interpolate_height(new_well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        new_well[0][2] = barycentric_interpolate_height_grid(new_well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
         new_well = new_well.flatten()
         console_log(f"Adjusted height of the new well: {new_well[2]}")
         # add the well to the wells_pcd
@@ -1502,7 +1519,8 @@ class PlagueSpread3D(Scene3D):
             self.find_infected_people_with_voronoi()
 
         self.terminal_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
-    
+        self.terminal_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
+
     def get_geodesic_distances_from_to_many_naive(self, person, wells, wells_triangle_indices):
         '''Calculates the geodesic distances between a person and many wells naively, by identifying the triangle in
         which the start point is located, and searching for the index linearly in the triangle_indices list'''
@@ -1667,6 +1685,7 @@ class PlagueSpread3D(Scene3D):
         self.updateShape(self.population_pcd_name)
 
         self.terminal_log(f"Infected number of people {len(self.infected_people_indices)}") #, with indices {self.infected_people_indices}")
+        self.terminal_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
 
     def getVoronoi(self, points):
         '''Returns the Voronoi diagram of the points.'''

@@ -163,7 +163,7 @@ def get_triangles_of_grid_points(points, z_values, SIZE, x_min, x_max):
 #     # interpolate the height of the point
 #     z = l1 * v0[2] + l2 * v1[2] + l3 * v2[2]
 #     return z
-def barycentric_interpolate_height(points, z_values, SIZE, x_min, x_max):
+def barycentric_interpolate_height_grid(points, z_values, SIZE, x_min, x_max):
     '''Interpolates the height of points using barycentric interpolation.'''
     x = points[:, 0]
     y = points[:, 1]
@@ -197,4 +197,4 @@ if __name__ == "__main__":
     z_values = np.random.rand(100)
     SIZE = 10
     x_min, x_max = -1, 1
-    print(barycentric_interpolate_height(point, z_values, SIZE, x_min, x_max))
+    print(barycentric_interpolate_height_grid(point, z_values, SIZE, x_min, x_max))
