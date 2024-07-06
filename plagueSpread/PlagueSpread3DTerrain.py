@@ -18,7 +18,9 @@ import matplotlib.pyplot as plt
 
 
 from plagueSpread.utils.GeometryUtils import (
-    get_triangles_of_grid_points, barycentric_interpolate_height_grid, calculate_triangle_centroids 
+    calculate_triangle_centroids, 
+    # get_triangles_of_grid_points, barycentric_interpolate_height_grid,
+    get_triangle_of_point, barycentric_interpolate_height
 )
 from plagueSpread.utils.DijkstraAlgorithm import Dijkstra
 from plagueSpread.KDTree import KdNode
@@ -51,13 +53,14 @@ class PlagueSpread3DTerrain(Scene3D):
         self.scenario_parameters_init()
 
         # setting up grid essentials
-        self.load_terrain()
-        self.create_grid() if not self.mesh else None
-        self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1) if not self.mesh else None
+        self.load_terrain() 
+        self.create_grid() if not self.mesh else None # create the grid if we don't have a mesh
+        self.triangulate_grid(self.grid.points, self.GRID_SIZE, -1, 1) if not self.mesh else None # triangulate the grid if we don't have a mesh
         centroids_need_update, dist_need_update, adj_need_update, short_paths_need_update,\
-              self.el_dist_matrix_need_update, self.el_short_paths_need_update = self.perform_file_checks()
-        self.calculate_centroids(centroids_need_update)
-        self.create_centroids_kd_tree()
+              self.el_dist_matrix_need_update, self.el_short_paths_need_update = self.perform_file_checks() # check if we need to update the files
+        self.calculate_centroids(centroids_need_update) 
+        self.create_centroids_kd_tree() # create the KD-Tree for the centroids
+        self.setup_geography_specifics() # set up the specifics of the geography before calculating the matrices
         self.create_adjacency_matrix(adj_need_update)
         self.create_distances_matrix(dist_need_update) # centroid distances matrix is the graph for Dijkstra
         self.create_shortest_paths_matrix(short_paths_need_update)
@@ -72,12 +75,14 @@ class PlagueSpread3DTerrain(Scene3D):
         self.my_mouse_pos = Point3D((0, 0, 0))
         self.addShape(self.my_mouse_pos, "mouse")
 
+        # debug
         # self.addShape(Point3D((-1, -1, 0), size=1, color=Color.RED), "down_left")
         # self.addShape(Point3D((1, 1, 0), size=1, color=Color.GREEN), "up_right")
         # self.addShape(Point3D((1, -1, 0), size=1, color=Color.BLUE), "down_right")
         # self.addShape(Point3D((-1, 1, 0), size=1, color=Color.YELLOW), "up_left")
-
-
+        # self._get_triangle_of_test_point(pt=np.array([-0.119, -0.755, 0]))
+        # self._get_triangle_of_test_point([0.5, 0.5, 0])
+        # self._highest_points_test()
 
     def _check_grid_mismatch(self, idx):
         '''Check if get_triangles_of_grid_points and self.triangle_indices are consistent.'''
@@ -96,7 +101,8 @@ class PlagueSpread3DTerrain(Scene3D):
         console_log(f"Centroid: {centroid}")
         # self.addShape(Point3D(centroid, size=1, color=Color.DARKGREEN), f"centroid_{idx}") 
 
-        function_triangle = get_triangles_of_grid_points(centroid, self.grid.points[:, 2], self.GRID_SIZE, -1, 1)
+        function_triangle_indices = get_triangle_of_point(centroid[:,:2], self.triangle_indices, self.mesh.vertices)
+        function_triangle = self.grid.points[function_triangle_indices]
         console_log(f"Function triangle: {function_triangle}")
         f1, f2, f3 = function_triangle
         # self.addShape(Point3D(f1, size=1, color=Color.BLUE), f"f1_{idx}")
@@ -132,21 +138,44 @@ class PlagueSpread3DTerrain(Scene3D):
                     list_of_names.append(name)
                     self.addShape(Line3D(p1, p2, width = 0.1, color=color), name)
         
-        # el_dist_matrix = self.create_elevation_distance_matrix()
+        # el_dist_matrix = self.create_elevation_distance_matrix().toarray()
+        # # retrieve the line indices
+        # lines = []
         # for i in range(len(el_dist_matrix)):
-        #     for j in range(len(el_dist_matrix)):
+        #     for j in range(i + 1, len(el_dist_matrix)):
         #         if el_dist_matrix[i, j] != 0:
-        #             p1 = self.centroids[i]
-        #             p2 = self.centroids[j]
-        #             names = f"elev_{i}_{j}"
-        #             list_of_names.append(names)
-        #             self.addShape(Line3D(p1, p2, width=0.5 ,color=color), names)
+        #             lines.append((i, j))
+        # lineset = LineSet3D(self.centroids, lines, width=1, color=color)
+        # self.addShape(lineset, "elevation_distances")
+        # list_of_names.append("elevation_distances")
 
-        # for i in range(len(self.centroids)//8):
-        #     p1 = self.centroids[i]
-        #     names = f"centroid_{i}"
-        #     list_of_names.append(names)
-        #     self.addShape(Point3D(p1, size=0.2, color=color), names)
+        # pointset_centroids = PointSet3D(self.centroids, size=1, color=color)
+        # self.addShape(pointset_centroids, "centroids")
+        # list_of_names.append("centroids")
+        # if not self.ELEVATION_DISTANCE:
+        #     # get the sum by row of all columns 
+        #     sum_by_row = np.sum(self.shortest_paths_matrix, axis=1).reshape(-1, 1)
+        #     # for each point, RGBA normalized by the sum of the row
+        #     # minmax normalize the sum by row
+        #     sum_by_row = (sum_by_row - np.min(sum_by_row)) / (np.max(sum_by_row) - np.min(sum_by_row))
+        #     sum_by_row = np.repeat(sum_by_row, 3, axis=1)
+        #     sum_by_row = np.hstack([sum_by_row, np.ones((len(sum_by_row), 1))])
+        #     pointset_centroids.colors = sum_by_row
+
+        #     self.removeShape("centroids")
+        #     self.addShape(pointset_centroids, "centroids")
+        # else:
+        #     # get the sum by row of all columns 
+        #     sum_by_row = np.sum(self.elevated_shortest_paths_matrix, axis=1).reshape(-1, 1)
+        #     # for each point, RGBA normalized by the sum of the row
+        #     # minmax normalize the sum by row
+        #     sum_by_row = (sum_by_row - np.min(sum_by_row)) / (np.max(sum_by_row) - np.min(sum_by_row))
+        #     sum_by_row = np.repeat(sum_by_row, 3, axis=1)
+        #     sum_by_row = np.hstack([sum_by_row, np.ones((len(sum_by_row), 1))])
+        #     pointset_centroids.colors = sum_by_row
+
+        #     self.removeShape("centroids")
+        #     self.addShape(pointset_centroids, "centroids")
 
         return list_of_names
 
@@ -185,6 +214,54 @@ class PlagueSpread3DTerrain(Scene3D):
         
         return list_of_names
 
+    def _get_triangle_of_test_point(self, pt=np.array([-0.119, -0.755, 0])):
+        test_pt = np.array(pt)
+        # vertical line through test point
+        lower_limit = np.array([test_pt[0], test_pt[1], -1])
+        upper_limit = np.array([test_pt[0], test_pt[1], 1])
+        self.addShape(Line3D(lower_limit, upper_limit, width=0.02, color=Color.BLACK), f"vertical_line_{test_pt}")
+        self.addShape(Point3D(test_pt, size=0.02, color=Color.BLUE), f"test_point_{test_pt}")
+
+        # get the k nearest neighbors
+        # k = 70
+        # nearest_centroids = KdNode.nearestK(test_pt, self.kd_centroid_root, k)
+        # for i, centroid in enumerate(nearest_centroids):
+        #     self.addShape(Point3D(centroid.point, size=0.2, color=Color.RED), f"nearest_{i}")
+        
+        triangle_index, _ = get_triangle_of_point(test_pt, self.triangle_indices, self.mesh.vertices)
+        triangle_vertices = self.grid.points[self.triangle_indices[triangle_index]]
+        self.addShape(Point3D(triangle_vertices[0], size=0.05, color=Color.RED), f"triangle_vertex_1_{test_pt}")
+        self.addShape(Point3D(triangle_vertices[1], size=0.05, color=Color.RED), f"triangle_vertex_2_{test_pt}")
+        self.addShape(Point3D(triangle_vertices[2], size=0.05, color=Color.RED), f"triangle_vertex_3_{test_pt}")
+        # self.addShape(Line3D(test_pt, self.centroids[triangle_index], color=Color.ORANGE), f"line_to_centroid_triangle_{test_pt}")
+
+    def _highest_points_test(self):
+        start_time = time()
+        # Get the 100 highest points
+        highest_indices = np.argsort(self.grid.points[:, 2])[-50:]
+        highest_points = self.grid.points[highest_indices]
+
+        # Start from the highest point (assume sorted in ascending order)
+        highest_point = highest_points[-1]
+        
+        # Filter out points within the required distance from the highest point
+        filtered_points = np.array([point for point in highest_points 
+                        if np.linalg.norm(point - highest_point) <= 0.3])
+        
+        # for all the filtered points, get the centroids within a certain radius
+        final_points = []
+        for point in filtered_points:
+            nearest_centroids = np.where(np.linalg.norm(self.centroids - point, axis=1) <= 0.2)[0]
+            nearest_centroids = self.centroids[nearest_centroids]
+            final_points.extend(nearest_centroids)
+
+        # Add the final points to the scene
+        pointset = PointSet3D(final_points, size=1, color=Color.RED)
+        self.addShape(pointset, "final_points")
+        end_time = time()
+        console_log(f"Time taken for highest points test: {end_time - start_time} seconds.")
+
+
     def load_terrain(self):
         '''Load the terrain from a saved terrain.'''
         console_log("Loading the terrain from the saved obj...")
@@ -221,6 +298,72 @@ class PlagueSpread3DTerrain(Scene3D):
         self.grid = PointSet3D(self.mesh.vertices, size=pointset_size, color=Color.GREY)
         self.grid_lines = self.wireframe # synonym
         self.triangle_indices = self.mesh.triangles
+    
+    def setup_mountainous_area(self):
+        # Get the 50 highest points
+        highest_indices = np.argsort(self.grid.points[:, 2])[-50:]
+        highest_points = self.grid.points[highest_indices]
+
+        highest_point = highest_points[-1]
+        
+        # Filter out points that are a certain distance away from the highest point
+        filtered_points = np.array([point for point in highest_points 
+                        if np.linalg.norm(point - highest_point) <= 0.3])
+        
+        # for all the filtered points, get the centroids within a certain radius
+        final_points = []
+        final_points_indexes = []
+        for point in filtered_points:
+            nearest_centroids = np.where(np.linalg.norm(self.centroids - point, axis=1) <= 0.2)[0]
+            final_points_indexes.extend(nearest_centroids)
+            nearest_centroids = self.centroids[nearest_centroids]
+            final_points.extend(nearest_centroids)
+
+        # Add the final points to the scene
+        mountainous_area = PointSet3D(final_points, size=1, color=Color.BLACK)
+        self.mountainous_area = mountainous_area
+        self.mountainous_area_idxs = final_points_indexes
+        self.addShape(mountainous_area, "mountainous_area")
+
+    def setup_tunnels(self):
+        ''' Set up the tunneled pathways.'''
+        tunnel_left = np.array([-0.51082277, -0.02691042, -0.05437386])
+        tunnel_right = np.array([-0.17765336, -0.04306034, -0.01655441])
+        # get closest centroids to the tunnel points
+        tunnel_left_centroid = KdNode.nearestNeighbor(tunnel_left, self.kd_centroid_root).point
+        tunnel_right_centroid = KdNode.nearestNeighbor(tunnel_right, self.kd_centroid_root).point
+        tunnel_left_centroid_idx = np.where(np.all(self.centroids == tunnel_left_centroid, axis=1))[0][0]
+        tunnel_right_centroid_idx = np.where(np.all(self.centroids == tunnel_right_centroid, axis=1))[0][0]
+
+        line = Line3D(tunnel_left_centroid, tunnel_right_centroid, width=3, color=Color.BLACK)
+        self.addShape(line, "tunnel_line_1")
+        self.tunnel_lines = [line]
+        self.tunnel_lines_idxs = [[tunnel_left_centroid_idx, tunnel_right_centroid_idx]]
+
+    def setup_geography_specifics(self):
+        '''Set up the specifics of the geography that concern the graph
+        for shortest paths calculation.'''
+        self.setup_mountainous_area()
+
+        self.setup_tunnels()
+
+    def toggle_mesh(self, action=-1):
+        '''Toggle which parts of the mesh to show.
+        - 0: show only the wireframe
+        - 1: show only the mesh
+        - anything else: show both'''
+        self.removeShape("mesh")
+        self.removeShape("wireframe")
+        if action == 0:
+            # show only the wireframe
+            self.addShape(self.wireframe, "wireframe")
+        elif action == 1:
+            # show only the mesh
+            self.addShape(self.mesh, "mesh")
+        else:
+            # show both
+            self.addShape(self.mesh, "mesh")
+            self.addShape(self.wireframe, "wireframe") 
 
     def create_grid(self):
         '''Creates a 3D grid on the z=0 plane'''
@@ -566,6 +709,15 @@ class PlagueSpread3DTerrain(Scene3D):
         # Calculate distances only for adjacent centroids
         for i in tqdm(range(num_centroids), desc="Calculating distances", leave=True):
             adjacent_indices = adjacency_matrix[i].indices
+            # check if there is geography specific information
+            # if the centroid is in the mountainous area, we consider it to be impassable
+            if i in self.mountainous_area_idxs:
+                distances_matrix[i, adjacent_indices] = np.inf
+                continue
+            # if the centroid is in the tunnel, we consider it to be massively preferable
+            if i in self.tunnel_lines_idxs[0]:
+                distances_matrix[i, adjacent_indices] = 0.0005
+                continue
             distances = np.linalg.norm(centroids[i] - centroids[adjacent_indices], axis=1)
             distances_matrix[i, adjacent_indices] = distances
 
@@ -652,6 +804,15 @@ class PlagueSpread3DTerrain(Scene3D):
 
         for i in tqdm(range(num_centroids), desc="Calculating elevation distances", leave=True):
             adjacent_indices = adjacency_matrix[i].indices
+            # check if there is geography specific information
+            # if the centroid is in the mountainous area, we consider it to be impassable
+            if i in self.mountainous_area_idxs:
+                elevation_distance_matrix[i, adjacent_indices] = np.inf
+                continue
+            # if the centroid is in the tunnel, we consider it to be massively preferable
+            if i in self.tunnel_lines_idxs[0]:
+                elevation_distance_matrix[i, adjacent_indices] = 0.0005
+                continue
             # Horizontal distances in the x and y plane
             horizontal_distances = np.linalg.norm(centroids[i][:2] - centroids[adjacent_indices][:, :2], axis=1)
             # Elevation differences
@@ -694,7 +855,7 @@ class PlagueSpread3DTerrain(Scene3D):
             console_log("Calculating the elevation distance matrix...")
             start_time = time()
             elevation_distance_matrix = self.calculate_elevation_distance_matrix(self.centroids, self.adjacency_matrix,\
-                                                                                  uphill_weight=5, downhill_weight=0.5) 
+                                                                                  uphill_weight=8, downhill_weight=0.5) 
             end_time = time()
             console_log(f"Elevation distance matrix calculated in {end_time - start_time} seconds.")
             console_log("Saving the elevation distance matrix...")
@@ -802,7 +963,7 @@ class PlagueSpread3DTerrain(Scene3D):
                             # get the new infected percentage
                             new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
                             # print the percentage increase
-                            console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
+                            self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                         else:
                             ## disenfect the closest well
                             # get the current infected percentage
@@ -812,9 +973,10 @@ class PlagueSpread3DTerrain(Scene3D):
                             # get the new infected percentage
                             new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
                             # print the percentage decrease
-                            console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
+                            self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                 # else, if the left mouse button was released...
                 elif button == Mouse.MOUSELEFT and modifiers & Key.MOD_SHIFT:
+                    infected_percentage = len(self.infected_people_indices) / self.POPULATION
                     # find the closest well to the mouse position
                     closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
                     # if its within a certain distance...
@@ -825,6 +987,8 @@ class PlagueSpread3DTerrain(Scene3D):
                         # add a new well at the mouse position
                         self.add_single_well(x, y)
                     self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                    new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                    self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                     self.resetVoronoi()
                     
             self.updateShape("mouse")
@@ -837,19 +1001,19 @@ class PlagueSpread3DTerrain(Scene3D):
 
         def version_1():
             self.POPULATION = 1000 if not self.TRIAL_MODE else 5
-            self.POPULATION_SIZE = 0.7 if not self.TRIAL_MODE else 0.7
+            self.POPULATION_SIZE = 1 if not self.TRIAL_MODE else 0.7
             self.WELLS = 15 if not self.TRIAL_MODE else 3
             self.reset_scene()
 
         def version_2():
             self.POPULATION = 10000 if not self.TRIAL_MODE else 10
-            self.POPULATION_SIZE = 0.6 if not self.TRIAL_MODE else 0.7
+            self.POPULATION_SIZE = 0.8 if not self.TRIAL_MODE else 0.7
             self.WELLS = 30 if not self.TRIAL_MODE else 5
             self.reset_scene()
         
         def version_3():
             self.POPULATION = 30000 if not self.TRIAL_MODE else 15
-            self.POPULATION_SIZE = 0.5 if not self.TRIAL_MODE else 0.7
+            self.POPULATION_SIZE = 0.7 if not self.TRIAL_MODE else 0.7
             self.WELLS = 45 if not self.TRIAL_MODE else 7
             self.reset_scene()
 
@@ -956,34 +1120,58 @@ class PlagueSpread3DTerrain(Scene3D):
                                 Color.GREEN, Color.YELLOW, Color.DARKRED,\
                                 Color.DARKGREEN, Color.YELLOWGREEN, Color.GRAY]
             if symbol == Key.UP and modifiers & Key.MOD_ALT:
+                ''' Show the matrices for debugging.'''
                 self.DEBUG = True
                 if self.DEBUG:
                     names = self._show_matrices(roster_colors[self.current_color_pointer])
                     for name in names:
                         self.debug_names.append(name)
             if symbol == Key.RIGHT and modifiers & Key.MOD_ALT:
+                ''' Change the color of the grid clockwise.'''
                 self.current_color_pointer += 1
                 self.current_color_pointer = self.current_color_pointer % 12
                 
-                self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
-                self.updateShape("grid")
-                self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
-                self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
+                if not self.wireframe_toggle:
+                    self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
+                    self.updateShape("grid")
+                    self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
+                    self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
+                elif self.wireframe_toggle and self.mesh is not None:
+                    self.mesh.color = roster_colors[self.current_color_pointer]
+                    self.updateShape("mesh")
             if symbol == Key.LEFT and modifiers & Key.MOD_ALT:
+                ''' Change the color of the grid anti-clockwise.'''
                 self.current_color_pointer -= 1
                 self.current_color_pointer %= 12
-    
-                self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
-                self.updateShape("grid")
-                self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
-                self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
-                
+
+                if not self.wireframe_toggle:
+                    self.grid.colors = np.full_like(self.grid.colors, roster_colors[self.current_color_pointer])
+                    self.updateShape("grid")
+                    self.grid_lines.colors = np.full_like(self.grid_lines.colors, roster_colors[self.current_color_pointer])
+                    self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
+                elif self.wireframe_toggle and self.mesh is not None:
+                    self.mesh.color = roster_colors[self.current_color_pointer]
+                    self.updateShape("mesh")       
+            if symbol == Key.C and modifiers & Key.MOD_ALT:
+                '''Toggle the mesh visibility.'''
+                if self.mesh is not None:
+                    self.wireframe_toggle = not self.wireframe_toggle
+                    if self.wireframe_toggle:
+                        self.toggle_mesh(1)
+                    else:
+                        self.toggle_mesh(0)
             if symbol == Key.SPACE and modifiers & Key.MOD_ALT:
+                '''Undo all debug changes.'''
                 self.DEBUG = False
-                self.grid.colors = np.full_like(self.grid.colors, Color.GRAY)
-                self.updateShape("grid")
-                self.grid_lines.colors = np.full_like(self.grid_lines.colors, Color.GRAY)
-                self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
+                self.toggle_mesh(-1)
+                if self.wireframe_toggle:
+                    self.mesh.color = Color.GREY
+                    self.updateShape("mesh")
+                else:
+                    self.grid.colors = np.full_like(self.grid.colors, Color.GRAY)
+                    self.updateShape("grid")
+                    self.grid_lines.colors = np.full_like(self.grid_lines.colors, Color.GRAY)
+                    self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
                 for name in self.debug_names:
                     self.removeShape(name)
             
@@ -1023,7 +1211,9 @@ class PlagueSpread3DTerrain(Scene3D):
         # self.VORONOI_ACTIVE = False
         self.VORONOI_VISIBLE = False
         self.COMPUTE_WITH_VORONOI = False
+        # debug
         self.debug_names = []
+        self.wireframe_toggle = False
 
         # colors
         self.current_color_pointer = 11
@@ -1121,6 +1311,7 @@ class PlagueSpread3DTerrain(Scene3D):
             self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, 42, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         console_log(f"Adjusting the height of the population points...")
         self.adjust_height_of_points(self.population_pcd)
+        self.move_from_impassable_areas(self.population_pcd) 
         self.addShape(self.population_pcd, self.population_pcd_name)
 
         # wells point cloud
@@ -1129,6 +1320,7 @@ class PlagueSpread3DTerrain(Scene3D):
         self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2.5)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
         self.adjust_height_of_points(self.wells_pcd)
+        self.move_from_impassable_areas(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
         # initialize the kd-tree for well selection
         console_log("Building the KD-Tree for wells...")
@@ -1171,6 +1363,7 @@ class PlagueSpread3DTerrain(Scene3D):
                 decrease_factor = 2
             self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, 42, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         self.adjust_height_of_points(self.population_pcd)
+        self.move_from_impassable_areas(self.population_pcd)
         self.addShape(self.population_pcd, self.population_pcd_name)
 
         # wells point cloud
@@ -1178,6 +1371,7 @@ class PlagueSpread3DTerrain(Scene3D):
         self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2.5)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
         self.adjust_height_of_points(self.wells_pcd)
+        self.move_from_impassable_areas(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
         # initialize the kd-tree for well selection
         self.kd_wells_root = KdNode.build_kd_node(self.wells_pcd.points)
@@ -1202,15 +1396,31 @@ class PlagueSpread3DTerrain(Scene3D):
 
         # pointset.points = points_nparray 
         
-        # Vectorized call to the interpolation function
-        heights = barycentric_interpolate_height_grid(points_nparray, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
-        # Assign the interpolated heights to the points
+        # vectorized call to the interpolation function
+        heights = barycentric_interpolate_height(points_nparray[:, :2], self.triangle_indices, self.mesh.vertices)
+        
         points_nparray[:, 2] = heights
 
         if isinstance(pointset, PointSet3D):
             pointset.points = points_nparray
         return points_nparray
 
+    def move_from_impassable_areas(self, pointset:PointSet3D):
+        '''Moves the points in the pointset away from impassable areas, as
+        determined by the self.mountainous_area point cloud.'''
+        points_nparray = np.array(pointset.points)
+        bounding_box = self.mountainous_area.getAABB()
+        for i in range(len(points_nparray)):
+            # if the point is within the mountainous area, put it in a random location
+            if bounding_box.x_min <= points_nparray[i][0] <= bounding_box.x_max and\
+                  bounding_box.y_min <= points_nparray[i][1] <= bounding_box.y_max:
+                points_nparray[i][0] = random.uniform(self.bound.x_min, self.bound.x_max)
+                points_nparray[i][1] = random.uniform(self.bound.y_min, self.bound.y_max)
+        
+        # re-adjust the height of the points
+        points_nparray = self.adjust_height_of_points(points_nparray)
+        pointset.points = points_nparray
+            
     def infect_wells(self, ratio:float|None = 0.2, hard_number:int|None = None):
         ''' Infects a certain number of wells with the plague.
         Args:
@@ -1312,7 +1522,7 @@ class PlagueSpread3DTerrain(Scene3D):
 
         new_well = np.array([[x, y, 0]])
         # find the height of the well
-        new_well[0][2] = barycentric_interpolate_height_grid(new_well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        new_well[0][2] = barycentric_interpolate_height(new_well[:, :2], self.triangle_indices, self.mesh.vertices)
         new_well = new_well.flatten()
         console_log(f"Adjusted height of the new well: {new_well[2]}")
         # add the well to the wells_pcd
@@ -1366,11 +1576,11 @@ class PlagueSpread3DTerrain(Scene3D):
             end = np.array(end)
     
         # get the triangle in which the start point is located
-        starting_triangle_vertices = get_triangles_of_grid_points(start, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
-        starting_triangle_vertices = np.array(starting_triangle_vertices)
+        starting_triangle_indices = get_triangle_of_point(start[:, :2], self.triangle_indices, self.mesh.vertices)
+        starting_triangle_vertices = self.mesh.vertices[starting_triangle_indices]
         # get the triangle in which the end point is located
-        ending_triangle_vertices = get_triangles_of_grid_points(end, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
-        ending_triangle_vertices = np.array(ending_triangle_vertices)
+        ending_triangle_vertices = get_triangle_of_point(end[:, :2], self.triangle_indices, self.mesh.vertices)
+        ending_triangle_vertices = self.mesh.vertices[ending_triangle_vertices]
         
         if np.array_equal(starting_triangle_vertices, ending_triangle_vertices):
             # if the start and end points are in the same triangle, return the euclidean distance between them
@@ -1572,7 +1782,8 @@ class PlagueSpread3DTerrain(Scene3D):
         which the start point is located, and searching for the index linearly in the triangle_indices list'''
 
         # get the triangle in which the person is located
-        starting_triangle_vertices = get_triangles_of_grid_points(person, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+        starting_triangle_indices = get_triangle_of_point(person[:, :2], self.triangle_indices, self.mesh.vertices)
+        starting_triangle_vertices = self.mesh.vertices[starting_triangle_indices]
         for i, triangle_index in enumerate(self.triangle_indices):
             grid_points = self.grid.points[triangle_index]
             if np.array_equal(grid_points, starting_triangle_vertices):
@@ -1611,7 +1822,8 @@ class PlagueSpread3DTerrain(Scene3D):
         # for all wells, get the triangle in which the well is located
         wells_triangles_indices = []
         for well in wells_nparray:
-            triangle_vertices = get_triangles_of_grid_points(well, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
+            triangle_indices = get_triangle_of_point(well[:,:2], self.triangle_indices, self.mesh.vertices)
+            triangle_vertices = self.mesh.vertices[triangle_indices]
             triangle_vertices = np.array(triangle_vertices)
             for i, triangle_index in enumerate(self.triangle_indices):
                 grid_points = self.grid.points[triangle_index]

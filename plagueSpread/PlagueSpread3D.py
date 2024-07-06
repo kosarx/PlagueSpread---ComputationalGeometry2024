@@ -119,24 +119,25 @@ class PlagueSpread3D(Scene3D):
 
     def _show_matrices(self, color=Color.BLACK):
         '''Add the adjacenct triangles to the scene.'''
-        # adjacency_matrix = self.adjacency_matrix
-        # for i in range(len(adjacency_matrix)):
-        #     for j in range(len(adjacency_matrix)):
-        #         if adjacency_matrix[i, j] == 1:
-        #             p1 = self.centroids[i]
-        #             p2 = self.centroids[j]
-        #             self.addShape(Line3D(p1, p2, color=Color.RED), f"adj_{i}_{j}")
-        
         list_of_names = []
-        el_dist_matrix = self.create_elevation_distance_matrix()
-        for i in range(len(el_dist_matrix)):
-            for j in range(len(el_dist_matrix)):
-                if el_dist_matrix[i, j] != 0:
+        adjacency_matrix = self.adjacency_matrix.toarray()
+        for i in range(len(adjacency_matrix)):
+            for j in range(len(adjacency_matrix)):
+                if adjacency_matrix[i, j] == 1:
                     p1 = self.centroids[i]
                     p2 = self.centroids[j]
-                    names = f"elev_{i}_{j}"
-                    list_of_names.append(names)
-                    self.addShape(Line3D(p1, p2, width=0.5 ,color=color), names)
+                    self.addShape(Line3D(p1, p2, color=Color.RED), f"adj_{i}_{j}")
+        
+        # list_of_names = []
+        # el_dist_matrix = self.create_elevation_distance_matrix().toarray()
+        # for i in range(len(el_dist_matrix)):
+        #     for j in range(len(el_dist_matrix)):
+        #         if el_dist_matrix[i, j] != 0:
+        #             p1 = self.centroids[i]
+        #             p2 = self.centroids[j]
+        #             names = f"elev_{i}_{j}"
+        #             list_of_names.append(names)
+        #             self.addShape(Line3D(p1, p2, width=0.5 ,color=color), names)
 
         # list_of_names = []
         # for i in range(len(self.centroids)):
@@ -757,7 +758,7 @@ class PlagueSpread3D(Scene3D):
                             # get the new infected percentage
                             new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
                             # print the percentage increase
-                            console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
+                            self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                         else:
                             ## disenfect the closest well
                             # get the current infected percentage
@@ -767,19 +768,22 @@ class PlagueSpread3D(Scene3D):
                             # get the new infected percentage
                             new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
                             # print the percentage decrease
-                            console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
+                            self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                 # else, if the left mouse button was released...
                 elif button == Mouse.MOUSELEFT and modifiers & Key.MOD_SHIFT:
+                    infected_percentage = len(self.infected_people_indices) / self.POPULATION
                     # find the closest well to the mouse position
                     closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y, z]), axis=1))
                     # if its within a certain distance...
                     if np.linalg.norm(np.array(self.wells_pcd.points[closest_well_index]) - np.array([x, y, z])) < 0.05:
-                        # remove the closest well
+                        ## remove the closest well
                         self.remove_single_well(closest_well_index)
                     else:
                         # add a new well at the mouse position
                         self.add_single_well(x, y)
                     self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                    new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                    self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                     self.resetVoronoi()
                     
             self.updateShape("mouse")
@@ -951,7 +955,7 @@ class PlagueSpread3D(Scene3D):
             version_3()
 
     def scenario_parameters_init(self):
-        self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 50, 80
+        self.GRID_SIZE = 100 # will create a grid of N x N points, choices: 20, 50, 80
         self.grid = None
         self.grid_lines = None
         self.bbx =[[-1, -1, 0], [1, 1, 0]]
@@ -1156,9 +1160,9 @@ class PlagueSpread3D(Scene3D):
 
         # pointset.points = points_nparray 
         
-        # Vectorized call to the interpolation function
+        # vectorized call to the interpolation function
         heights = barycentric_interpolate_height_grid(points_nparray, self.grid.points[:, 2], self.GRID_SIZE, self.bound.x_min, self.bound.x_max)
-        # Assign the interpolated heights to the points
+        
         points_nparray[:, 2] = heights
 
         if isinstance(pointset, PointSet3D):

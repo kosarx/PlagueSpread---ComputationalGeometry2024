@@ -114,6 +114,7 @@ class PlagueSpread2D(Scene2D):
                         console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
             # else, if the left mouse button was released...
             elif button == Mouse.MOUSE1:
+                infected_percentage = len(self.infected_people_indices) / self.POPULATION
                 # find the closest well to the mouse position
                 closest_well_index = np.argmin(np.linalg.norm(np.array(self.wells_pcd.points) - np.array([x, y]), axis=1))
                 # if its within a certain distance...
@@ -124,6 +125,8 @@ class PlagueSpread2D(Scene2D):
                     # add a new well at the mouse position
                     self.add_single_well(x, y)
                 self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
+                new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
+                console_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                 self.resetVoronoi()
                 
         self.updateShape("mouse")
