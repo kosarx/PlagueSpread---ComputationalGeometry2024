@@ -1,6 +1,6 @@
 '''Contains utility classes and functions for geometry operations.
 - LineEquation2D: Represents a 2D line equation.
-- isInsidePolygon: Returns True if the point is inside the polygon.
+- isInsidePolygonD2D: Returns True if the point is inside the polygon.
 - barycentric_interpolate_height: Interpolates the height of a point using barycentric interpolation given a grid.'''
 import os
 
@@ -71,31 +71,67 @@ class LineEquation2D:
 
         return d1 + d2 - d < 0
 
-def isInsidePolygon2D(point, polygon):  
-    '''Returns True if the point is inside the polygon.'''
+# def isInsidePolygon2D(point, polygon):  
+#     '''Returns True if the point is inside the polygon.'''
+#     n = len(polygon)
+#     inside = False
+#     # check if the point is inside the polygon
+#     p1x, p1y = polygon[0]
+#     # iterate over the edges of the polygon
+#     for i in range(n + 1):
+#         # get the coordinates of the next vertex
+#         p2x, p2y = polygon[i % n]
+#         # check if the point is inside the polygon
+#         if point[1] > min(p1y, p2y):
+#             # check if the point is below the edge
+#             if point[1] <= max(p1y, p2y):
+#                 # check if the point is to the left of the edge
+#                 if point[0] <= max(p1x, p2x):
+#                     # check if the edge is not vertical
+#                     if p1y != p2y:
+#                         # calculate the x-coordinate of the intersection point
+#                         xinters = (point[1] - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+#                     # check if the point is to the left of the intersection point
+#                     if p1x == p2x or point[0] <= xinters:
+#                         inside = not inside
+#         # move to the next vertex
+#         p1x, p1y = p2x, p2y
+#     return inside
+def is_inside_polygon_2d(points, polygon):
+    '''
+    Returns a boolean array indicating if each point is inside the polygon.
+    
+    points: Nx2 numpy array of points
+    polygon: Mx2 numpy array of polygon vertices
+    '''
     n = len(polygon)
-    inside = False
-    # check if the point is inside the polygon
+    points = np.asarray(points)
+    polygon = np.asarray(polygon)
+    
+    # Create arrays for vectorized operations
+    px, py = points[:, 0], points[:, 1]
+    inside = np.zeros(points.shape[0], dtype=bool)
+
     p1x, p1y = polygon[0]
-    # iterate over the edges of the polygon
     for i in range(n + 1):
-        # get the coordinates of the next vertex
         p2x, p2y = polygon[i % n]
-        # check if the point is inside the polygon
-        if point[1] > min(p1y, p2y):
-            # check if the point is below the edge
-            if point[1] <= max(p1y, p2y):
-                # check if the point is to the left of the edge
-                if point[0] <= max(p1x, p2x):
-                    # check if the edge is not vertical
-                    if p1y != p2y:
-                        # calculate the x-coordinate of the intersection point
-                        xinters = (point[1] - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                    # check if the point is to the left of the intersection point
-                    if p1x == p2x or point[0] <= xinters:
-                        inside = not inside
-        # move to the next vertex
+        cond1 = (py > np.minimum(p1y, p2y))  # check if the point is inside the y-bounds of the edge
+        cond2 = (py <= np.maximum(p1y, p2y)) 
+        cond3 = (px <= np.maximum(p1x, p2x))
+        
+        # check if the edge is not horizontal
+        if p1y != p2y:
+            xinters = (py - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+        else:
+            xinters = px  # this line is arbitrary since the edge is horizontal
+        
+        cond4 = (p1x == p2x) | (px <= xinters)
+        
+        # update the inside array
+        inside = inside ^ (cond1 & cond2 & cond3 & cond4)
+        
         p1x, p1y = p2x, p2y
+    
     return inside
 
 # for 3D scene
@@ -304,15 +340,89 @@ def barycentric_interpolate_height(points, triangles, vertices):
 
     return interpolated_heights
 
+
+# as defined in Lab 1
+def CH_quickhull(points:np.array):
+        if len(points) < 3:
+            return points # cannot form a convex hull with less than 3 points
+
+        def query_line(pointcloud, A, B):
+            nonlocal chull
+
+            #base case, empty pointcloud
+            if pointcloud.shape[0] == 0:
+                return
+
+            #--------------------------------------------------------------------------
+            # finding the furthest point C from the line A B
+            #--------------------------------------------------------------------------
+
+            #projecting 
+            AP = pointcloud - A
+            AB = B - A
+            proj = AB * (AP @ AB.reshape(-1, 1)) / np.dot(AB, AB) #Ν x 2
+
+            #finding distances between points and their projection (which is the distance from the line)
+            dist = np.linalg.norm(pointcloud - A - proj, axis=1)
+
+            #the furthest point is the one with the maximum distance
+            C = pointcloud[np.argmax(dist)]
+
+            #adding C to the convex hull
+            chull.append(C)
+
+            #--------------------------------------------------------------------------
+            # forming the lines CA, CB that constitute a triangle
+            #--------------------------------------------------------------------------
+
+            #separating the points on the right and on the left of AC
+            ACleft, _ = separate_points_by_line(A, C, pointcloud)
+
+            #separating the points on the right and on the left of CB
+            CBleft, _ = separate_points_by_line(C, B, pointcloud)
+
+            #Recursively process each set
+            query_line(ACleft, A, C)
+            query_line(CBleft, C, B)
+
+        def separate_points_by_line(A, B, P):
+            val = (P[:,1] - A[1]) * (B[0] - A[0]) - (B[1] - A[1]) * (P[:,0] - A[0])
+
+            left_points = P[val > 0]
+            right_points = P[val < 0]
+
+            return left_points, right_points
+        
+        #Finding extreme points
+        A, B = points[np.argmin(points[:,0])], points[np.argmax(points[:,0])]
+
+        #list to keep track of convex hull points
+        chull = []
+
+        #extreme points necessarily belong to the convex hull
+        chull.append(A)
+        chull.append(B)
+
+        #splitting the pointcloud along the line into 2 sets
+        P1, P2 = separate_points_by_line(A, B, points)
+
+        #recusrively processing each point set
+        query_line(P1, A, B)
+        query_line(P2, B, A)
+
+        return np.array(chull)
+
 if __name__ == "__main__":
     # test the functions
     point = (0, 0)
     polygon = [(0, 0), (0, 1), (1, 1), (1, 0)]
-    print(isInsidePolygon2D(point, polygon))
+    # print(isInsidePolygon2D(point, polygon))
+    print(is_inside_polygon_2d(np.array([point]), np.array(polygon)))
 
     point = (0.5, 0.5)
     polygon = [(0, 0), (0, 1), (1, 1), (1, 0)]
-    print(isInsidePolygon2D(point, polygon))
+    # print(isInsidePolygon2D(point, polygon))
+    print(is_inside_polygon_2d(np.array([point]), np.array(polygon)))
 
     point = np.array([[0.5, 0.5]])
     z_values = np.random.rand(100)
@@ -372,48 +482,48 @@ if __name__ == "__main__":
     print(heights)
     final_points = np.hstack((points, heights[:, np.newaxis]))
     print(final_points)
-    def compute_barycentric_coordinates_vectorized(p, a, b, c):
-        """
-        Vectorized computation of barycentric coordinates for multiple points and triangles.
+    # def compute_barycentric_coordinates_vectorized(p, a, b, c):
+    #     """
+    #     Vectorized computation of barycentric coordinates for multiple points and triangles.
 
-        Args:
-            p: A numpy array of shape (n, 2) representing n points in 2D space.
-            a: A numpy array of shape (n, 2) representing n triangle vertices a.
-            b: A numpy array of shape (n, 2) representing n triangle vertices b.
-            c: A numpy array of shape (n, 2) representing n triangle vertices c.
+    #     Args:
+    #         p: A numpy array of shape (n, 2) representing n points in 2D space.
+    #         a: A numpy array of shape (n, 2) representing n triangle vertices a.
+    #         b: A numpy array of shape (n, 2) representing n triangle vertices b.
+    #         c: A numpy array of shape (n, 2) representing n triangle vertices c.
 
-        Returns:
-            A tuple of numpy arrays of shape (n, 3) representing the barycentric coordinates (u, v, w) for each point-triangle pair.
-        """
+    #     Returns:
+    #         A tuple of numpy arrays of shape (n, 3) representing the barycentric coordinates (u, v, w) for each point-triangle pair.
+    #     """
 
-        # Calculate the denominator (area of the triangle)
-        denom = ((b[:, 1] - c[:, 1]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 1] - c[:, 1]))
+    #     # Calculate the denominator (area of the triangle)
+    #     denom = ((b[:, 1] - c[:, 1]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 1] - c[:, 1]))
 
 
-        # Compute intermediate terms for efficiency
-        v0 = b[:, 1] - c[:, 1]
-        v1 = c[:, 0] - b[:, 0]
-        v2 = a[:, 1] - c[:, 1]
-        v3 = a[:, 0] - c[:, 0]
+    #     # Compute intermediate terms for efficiency
+    #     v0 = b[:, 1] - c[:, 1]
+    #     v1 = c[:, 0] - b[:, 0]
+    #     v2 = a[:, 1] - c[:, 1]
+    #     v3 = a[:, 0] - c[:, 0]
 
-        # Calculate u using vectorized operations
-        u = (v0 * (p[:, 0] - c[:, 0]) + v1 * (p[:, 1] - c[:, 1])) / denom
+    #     # Calculate u using vectorized operations
+    #     u = (v0 * (p[:, 0] - c[:, 0]) + v1 * (p[:, 1] - c[:, 1])) / denom
 
-        # Calculate v using vectorized operations
-        v = (v2 * (p[:, 0] - c[:, 0]) + v3 * (p[:, 1] - c[:, 1])) / denom
-        # Calculate w = 1 - u - v
-        w = 1 - u - v
+    #     # Calculate v using vectorized operations
+    #     v = (v2 * (p[:, 0] - c[:, 0]) + v3 * (p[:, 1] - c[:, 1])) / denom
+    #     # Calculate w = 1 - u - v
+    #     w = 1 - u - v
 
-        return u, v, w
-    # Example usage
-    p = np.array([[1, 2], [3, 4], [5, 6]])
-    a = np.array([[0, 0], [1, 0], [0, 1]])
-    b = np.array([[1, 1], [2, 1], [1, 2]])
-    c = np.array([[2, 0], [0, 2], [2, 2]])
+    #     return u, v, w
+    # # Example usage
+    # p = np.array([[1, 2], [3, 4], [5, 6]])
+    # a = np.array([[0, 0], [1, 0], [0, 1]])
+    # b = np.array([[1, 1], [2, 1], [1, 2]])
+    # c = np.array([[2, 0], [0, 2], [2, 2]])
 
-    u, v, w = compute_barycentric_coordinates_vectorized(p, a, b, c)
+    # u, v, w = compute_barycentric_coordinates_vectorized(p, a, b, c)
 
-    print(u)
-    print(v)
-    print(w)
+    pointset = np.random.rand(100, 3)  # Generate some random 3D points
+    hull = CH_quickhull(pointset)
+    print("quickhull: ", hull)
     

@@ -40,7 +40,7 @@ class Dijkstra:
                     self.distances[start_vertex][neighbor] = distance
                     predecessors[neighbor] = current_vertex
                     heapq.heappush(min_heap, (distance, neighbor))
-
+                    
         self.predecessors[start_vertex] = predecessors
 
     def calculate_all_shortest_paths(self):

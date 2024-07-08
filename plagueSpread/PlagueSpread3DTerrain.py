@@ -20,7 +20,8 @@ import matplotlib.pyplot as plt
 from plagueSpread.utils.GeometryUtils import (
     calculate_triangle_centroids, 
     # get_triangles_of_grid_points, barycentric_interpolate_height_grid,
-    get_triangle_of_point, barycentric_interpolate_height
+    get_triangle_of_point, barycentric_interpolate_height, CH_quickhull,
+    is_inside_polygon_2d
 )
 from plagueSpread.utils.DijkstraAlgorithm import Dijkstra
 from plagueSpread.KDTree import KdNode
@@ -73,7 +74,7 @@ class PlagueSpread3DTerrain(Scene3D):
 
         self._print_instructions()
         self.my_mouse_pos = Point3D((0, 0, 0))
-        self.addShape(self.my_mouse_pos, "mouse")
+        # self.addShape(self.my_mouse_pos, "mouse")
 
         # debug
         # self.addShape(Point3D((-1, -1, 0), size=1, color=Color.RED), "down_left")
@@ -181,36 +182,44 @@ class PlagueSpread3DTerrain(Scene3D):
 
     def _show_path(self, start, end):
         '''Show the shortest path between two vertices.'''
-        if not hasattr(self, "dijkstra"):
-            centroid_distances_matrix = self.centroid_distances_matrix
-            dijkstra = Dijkstra(centroid_distances_matrix)
-            dijkstra.calculate_shortest_paths_from_vertex(start)
-            shortest_costs = dijkstra.get_distances()
-            shortest_paths = dijkstra.get_shortest_path(start, end)
-        else:
-            shortest_paths = self.dijkstra.get_shortest_path(start, end)
+        centroid_distances_matrix = self.centroid_distances_matrix.toarray()
+        dijkstra = Dijkstra(centroid_distances_matrix)  
+        dijkstra.calculate_shortest_paths_from_vertex(start)
+        shortest_paths = dijkstra.get_shortest_path(start, end)
+        shortest_costs = dijkstra.get_distances()
+        console_log(f"Shortest path cost: {shortest_costs[start][end]}")
 
         list_of_names = []
+        lines = []
         for i in range(len(shortest_paths) - 1):
-            p1 = self.centroids[shortest_paths[i]]
-            p2 = self.centroids[shortest_paths[i + 1]]
-            name = f"shortest_{i}"
-            list_of_names.append(name)
-            self.addShape(Line3D(p1, p2, color=Color.RED), name)
+            lines.append((i, i + 1))
+        path_points = self.centroids[shortest_paths]
+        # increase the z value of the path points to be more visible
+        path_points[:, 2] += 0.01
+        lineset = LineSet3D(path_points, lines, width=5, color=Color.RED)
+        self.removeShape("shortest_paths")
+        self.addShape(lineset, "shortest_paths")
+        list_of_names.append("shortest_paths")
         
         if self.elevation_distance_matrix is None:
-            elevation_distance_matrix = self.create_elevation_distance_matrix()
-            dijkstra_elev = Dijkstra(elevation_distance_matrix)
-            dijkstra_elev.calculate_shortest_paths_from_vertex(start)
-            # shortest_costs_elev = dijkstra_elev.get_distances()
+            self.elevation_distance_matrix = self.create_elevation_distance_matrix()
+        elevation_distance_matrix = self.elevation_distance_matrix.toarray()
+        dijkstra_elev = Dijkstra(elevation_distance_matrix)
+        dijkstra_elev.calculate_shortest_paths_from_vertex(start)
+        shortest_costs_elev = dijkstra_elev.get_distances()
+        console_log(f"Elevated shortest path cost: {shortest_costs_elev[start][end]}")
+        shortest_paths_elev = dijkstra_elev.get_shortest_path(start, end)
 
-        shortest_paths_elev = self.dijkstra.get_shortest_path(start, end)
+        lines = []
         for i in range(len(shortest_paths_elev) - 1):
-            p1 = self.centroids[shortest_paths_elev[i]]
-            p2 = self.centroids[shortest_paths_elev[i + 1]]
-            name = f"shortest_elev_{i}"
-            list_of_names.append(name)
-            self.addShape(Line3D(p1, p2, color=Color.YELLOWGREEN), name)
+            lines.append((i, i + 1))
+        elevated_points = self.centroids[shortest_paths_elev]
+        # increase the z value of the elevated points to be more visible
+        elevated_points[:, 2] += 0.01
+        lineset = LineSet3D(elevated_points, lines, width=5, color=Color.YELLOWGREEN)
+        self.removeShape("shortest_paths_elev")
+        self.addShape(lineset, "shortest_paths_elev")
+        list_of_names.append("shortest_paths_elev")
         
         return list_of_names
 
@@ -612,6 +621,10 @@ class PlagueSpread3DTerrain(Scene3D):
             for j, other_triangle in enumerate(self.triangle_indices):
                 if i == j:
                     continue
+                if i in self.tunnel_lines_idxs[0] and j in self.tunnel_lines_idxs[0]:
+                    adjacency_matrix[i, j] = 1
+                    adjacency_matrix[j, i] = 1
+                    continue
                 # if the triangles share an edge, they are adjacent
                 if len(set(triangle) & set(other_triangle)) == 2:
                     adjacency_matrix[i, j] = 1
@@ -643,6 +656,11 @@ class PlagueSpread3DTerrain(Scene3D):
                 for j in range(i + 1, len(triangles)):
                     adjacency_matrix[triangles[i], triangles[j]] = 1
                     adjacency_matrix[triangles[j], triangles[i]] = 1
+
+        # add the tunnel lines
+        for tunnel in self.tunnel_lines_idxs:
+            adjacency_matrix[tunnel[0], tunnel[1]] = 1
+            adjacency_matrix[tunnel[1], tunnel[0]] = 1
         
         return adjacency_matrix.tocsr()
 
@@ -714,11 +732,11 @@ class PlagueSpread3DTerrain(Scene3D):
             if i in self.mountainous_area_idxs:
                 distances_matrix[i, adjacent_indices] = np.inf
                 continue
-            # if the centroid is in the tunnel, we consider it to be massively preferable
-            if i in self.tunnel_lines_idxs[0]:
-                distances_matrix[i, adjacent_indices] = 0.0005
-                continue
             distances = np.linalg.norm(centroids[i] - centroids[adjacent_indices], axis=1)
+            # if the centroid is in the tunnel, we consider it to be inexpensive to traverse
+            if i in self.tunnel_lines_idxs[0]:
+                distances_matrix[i, adjacent_indices] = distances/10
+                continue
             distances_matrix[i, adjacent_indices] = distances
 
         distances_matrix = distances_matrix.tocsr()
@@ -809,10 +827,6 @@ class PlagueSpread3DTerrain(Scene3D):
             if i in self.mountainous_area_idxs:
                 elevation_distance_matrix[i, adjacent_indices] = np.inf
                 continue
-            # if the centroid is in the tunnel, we consider it to be massively preferable
-            if i in self.tunnel_lines_idxs[0]:
-                elevation_distance_matrix[i, adjacent_indices] = 0.0005
-                continue
             # Horizontal distances in the x and y plane
             horizontal_distances = np.linalg.norm(centroids[i][:2] - centroids[adjacent_indices][:, :2], axis=1)
             # Elevation differences
@@ -823,6 +837,10 @@ class PlagueSpread3DTerrain(Scene3D):
             vertical_distances[downhill_values] = -downhill_weight * delta_z[downhill_values] # reduce the gain for downhill movement
             vertical_distances[~downhill_values] = uphill_weight * np.abs(delta_z[~downhill_values])
             # Calculate the elevation distance
+            # if the centroid is in the tunnel, we consider it to be massively preferable
+            if i in self.tunnel_lines_idxs[0]:
+                elevation_distance_matrix[i, adjacent_indices] = (horizontal_distances + vertical_distances)/10
+                continue
             elevation_distance_matrix[i, adjacent_indices] = horizontal_distances + vertical_distances
 
         elevation_distance_matrix = elevation_distance_matrix.tocsr()
@@ -934,7 +952,7 @@ class PlagueSpread3DTerrain(Scene3D):
 
     @world_space
     def on_mouse_press(self, x, y, z, button, modifiers):
-        if (button == Mouse.MOUSELEFT or button == Mouse.MOUSERIGHT) and modifiers & Key.MOD_SHIFT:
+        if (button == Mouse.MOUSELEFT or button == Mouse.MOUSERIGHT) and (modifiers & Key.MOD_SHIFT or modifiers & Key.MOD_ALT):
             if np.isinf(z) or np.isinf(x) or np.isinf(y):
                 console_log("Mouse pressed outside the bounds, ", x, y, z)
                 return
@@ -990,12 +1008,44 @@ class PlagueSpread3DTerrain(Scene3D):
                     new_infected_percentage = len(self.infected_people_indices) / self.POPULATION
                     self.terminal_log(f"Percentage impact: {(new_infected_percentage - infected_percentage)*100}")
                     self.resetVoronoi()
+
+                # debug
+                elif modifiers & Key.MOD_ALT:
+                    if button == Mouse.MOUSELEFT and modifiers & Key.MOD_ALT:
+                        # find the closest centroid to the mouse position
+                        start_point = np.array([x, y, z])
+                        closest_centroid = KdNode.nearestNeighbor(start_point, self.kd_centroid_root)
+                        closest_centroid = closest_centroid.point
+                        closest_centroid_index = np.where(np.all(self.centroids == closest_centroid, axis=1))[0][0]
+                        self.removeShape("show_path_start")
+                        self.addShape(Point3D(closest_centroid, size=0.3, color=Color.RED), "show_path_start")
+                        self.debug_names.append("show_path_start")
+                        self.show_path_start = closest_centroid_index
+                        console_log(f"Start point: {closest_centroid}")
+                    if button == Mouse.MOUSERIGHT and modifiers & Key.MOD_ALT:
+                        # find the closest centroid to the mouse position
+                        end_point = np.array([x, y, z])
+                        closest_centroid = KdNode.nearestNeighbor(end_point, self.kd_centroid_root)
+                        closest_centroid = closest_centroid.point
+                        closest_centroid_index = np.where(np.all(self.centroids == closest_centroid, axis=1))[0][0]
+                        self.removeShape("show_path_end")
+                        self.addShape(Point3D(closest_centroid, size=0.3, color=Color.BLUE), "show_path_end")
+                        self.debug_names.append("show_path_end")
+                        self.show_path_end = closest_centroid_index
+                        console_log(f"End point: {closest_centroid}")
+                    if (self.show_path_start is not None and self.show_path_end is not None) and not np.allclose(self.show_path_start, self.show_path_end):
+                        console_log(f"Finding path...")
+                        self.debug_names = self._show_path(self.show_path_start, self.show_path_end)
+                        console_log(f"Path set")
                     
-            self.updateShape("mouse")
+            # self.updateShape("mouse")
 
     def within_bound(self, x, y):
         '''Checks if the point (x, y) is within the bounding box.'''
-        return x >= self.bbx[0][0] and x <= self.bbx[1][0] and y >= self.bbx[0][1] and y <= self.bbx[1][1]
+        # return x >= self.bbx[0][0] and x <= self.bbx[1][0] and y >= self.bbx[0][1] and y <= self.bbx[1][1]
+        polygon = np.array([[self.bound.x_min, self.bound.y_min], [self.bound.x_max, self.bound.y_min],\
+                             [self.bound.x_max, self.bound.y_max], [self.bound.x_min, self.bound.y_max]])
+        return is_inside_polygon_2d(np.array([[x, y]]), polygon)
 
     def on_key_press(self, symbol, modifiers):
 
@@ -1174,6 +1224,8 @@ class PlagueSpread3DTerrain(Scene3D):
                     self.updateShape("grid_lines") if self.mesh is None else self.updateShape("wireframe")
                 for name in self.debug_names:
                     self.removeShape(name)
+                self.show_path_end = None
+                self.show_path_start = None
             
         # set the scenario to version 1 or 2 or 3
         if symbol == Key._1:
@@ -1214,6 +1266,8 @@ class PlagueSpread3DTerrain(Scene3D):
         # debug
         self.debug_names = []
         self.wireframe_toggle = False
+        self.show_path_start = None
+        self.show_path_end = None
 
         # colors
         self.current_color_pointer = 11
@@ -1310,8 +1364,8 @@ class PlagueSpread3DTerrain(Scene3D):
                 decrease_factor = 2
             self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, 42, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
         console_log(f"Adjusting the height of the population points...")
-        self.adjust_height_of_points(self.population_pcd)
         self.move_from_impassable_areas(self.population_pcd) 
+        self.adjust_height_of_points(self.population_pcd)
         self.addShape(self.population_pcd, self.population_pcd_name)
 
         # wells point cloud
@@ -1319,8 +1373,8 @@ class PlagueSpread3DTerrain(Scene3D):
         self.wells_pcd_name = "Wells"
         self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2.5)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
-        self.adjust_height_of_points(self.wells_pcd)
         self.move_from_impassable_areas(self.wells_pcd)
+        self.adjust_height_of_points(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
         # initialize the kd-tree for well selection
         console_log("Building the KD-Tree for wells...")
@@ -1362,16 +1416,16 @@ class PlagueSpread3DTerrain(Scene3D):
                 rois_radii = np.array([0.3, 0.2])
                 decrease_factor = 2
             self.population_pcd.createRandomWeighted(self.bound, self.POPULATION, 42, self.healthy_population_color, rois, rois_radii, weights, decrease_factor)
-        self.adjust_height_of_points(self.population_pcd)
         self.move_from_impassable_areas(self.population_pcd)
+        self.adjust_height_of_points(self.population_pcd)
         self.addShape(self.population_pcd, self.population_pcd_name)
 
         # wells point cloud
         self.wells_pcd_name = "Mini Wells"
         self.wells_pcd = PointSet3D(color=self.healthy_wells_color, size=2.5)
         self.wells_pcd.createRandom(self.bound, self.WELLS, 42, self.healthy_wells_color)
-        self.adjust_height_of_points(self.wells_pcd)
         self.move_from_impassable_areas(self.wells_pcd)
+        self.adjust_height_of_points(self.wells_pcd)
         self.addShape(self.wells_pcd, self.wells_pcd_name)
         # initialize the kd-tree for well selection
         self.kd_wells_root = KdNode.build_kd_node(self.wells_pcd.points)
@@ -1409,16 +1463,35 @@ class PlagueSpread3DTerrain(Scene3D):
         '''Moves the points in the pointset away from impassable areas, as
         determined by the self.mountainous_area point cloud.'''
         points_nparray = np.array(pointset.points)
-        bounding_box = self.mountainous_area.getAABB()
-        for i in range(len(points_nparray)):
-            # if the point is within the mountainous area, put it in a random location
-            if bounding_box.x_min <= points_nparray[i][0] <= bounding_box.x_max and\
-                  bounding_box.y_min <= points_nparray[i][1] <= bounding_box.y_max:
-                points_nparray[i][0] = random.uniform(self.bound.x_min, self.bound.x_max)
-                points_nparray[i][1] = random.uniform(self.bound.y_min, self.bound.y_max)
+        mountainous_points = np.array(self.mountainous_area.points)
+
+        def order_points(points):
+            '''Orders points in a counterclockwise manner around their centroid.'''
+            center = np.mean(points, axis=0)
+            angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])
+            return points[np.argsort(angles)]
+
         
+        ch = CH_quickhull(mountainous_points)
+        ch = order_points(ch)
+
+        lines = []
+        for i in range(len(ch)):
+            lines.append((i, (i+1)%len(ch)))
+
+        # ch_pointset = PointSet3D(points=ch, color=Color.BLACK, size=2)
+        ch_lineset = LineSet3D(ch, lines, width=1, color=Color.BLACK)
+        # self.addShape(ch_pointset, "ch_pointset")
+        self.addShape(ch_lineset, "ch_lineset")
+
+        # for each point in the pointset, check if it is within the convex hull
+        points_inside = is_inside_polygon_2d(points_nparray[:, :2], ch[:, :2]) # we can use the 2D function
+                                                # because the z-coordinate is not important here
+        # if a point is inside the convex hull, move it a random distance away away from the hull
+        points_nparray[points_inside] = np.array([random.uniform(self.bound.x_min, self.bound.x_max), random.uniform(self.bound.y_min, self.bound.y_max), 0])
+
         # re-adjust the height of the points
-        points_nparray = self.adjust_height_of_points(points_nparray)
+        # points_nparray = self.adjust_height_of_points(points_nparray)
         pointset.points = points_nparray
             
     def infect_wells(self, ratio:float|None = 0.2, hard_number:int|None = None):
@@ -1522,7 +1595,7 @@ class PlagueSpread3DTerrain(Scene3D):
 
         new_well = np.array([[x, y, 0]])
         # find the height of the well
-        new_well[0][2] = barycentric_interpolate_height(new_well[:, :2], self.triangle_indices, self.mesh.vertices)
+        new_well[0][2] = barycentric_interpolate_height(new_well[:, :2], self.triangle_indices, self.mesh.vertices)[0]
         new_well = new_well.flatten()
         console_log(f"Adjusted height of the new well: {new_well[2]}")
         # add the well to the wells_pcd

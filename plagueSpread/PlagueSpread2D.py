@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from Voronoi import Voronoi # Voronoi is a class from the plagueSpread package\ 
 #                                                 Needs debugging, doesn't work!
 from plagueSpread.utils.GeometryUtils import LineEquation2D
-from plagueSpread.utils.GeometryUtils import isInsidePolygon2D
+from plagueSpread.utils.GeometryUtils import is_inside_polygon_2d#isInsidePolygon2D
 
 # VVR imports
 from vvrpywork.constants import Key, Mouse, Color
@@ -666,7 +666,7 @@ class PlagueSpread2D(Scene2D):
             # retrieve the vertices that make up the region
             vertices = [vor.vertices[j] for j in region if j != -1]
             # if the point is within the region, return the index of the region
-            if isInsidePolygon2D(point, vertices):
+            if is_inside_polygon_2d(point, vertices):
                 return i
         return -1
     
