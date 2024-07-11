@@ -84,6 +84,7 @@ class PlagueSpread3DTerrain(Scene3D):
         # self._get_triangle_of_test_point(pt=np.array([-0.119, -0.755, 0]))
         # self._get_triangle_of_test_point([0.5, 0.5, 0])
         # self._highest_points_test()
+        # self._barycentric_interpolation_test(pt=np.array([0.5, 0.5, 0]))
 
     def _check_grid_mismatch(self, idx):
         '''Check if get_triangles_of_grid_points and self.triangle_indices are consistent.'''
@@ -128,17 +129,20 @@ class PlagueSpread3DTerrain(Scene3D):
 
     def _show_matrices(self, color=Color.BLACK):
         '''Add the adjacenct triangles to the scene.'''
-        list_of_names = []
-        adjacency_matrix = self.adjacency_matrix.toarray()
-        for i in range(len(adjacency_matrix)//16):
-            for j in range(len(adjacency_matrix)//16):
-                if adjacency_matrix[i, j] == 1:
-                    p1 = self.centroids[i]
-                    p2 = self.centroids[j]
-                    name = f"adj_{i}_{j}"
-                    list_of_names.append(name)
-                    self.addShape(Line3D(p1, p2, width = 0.1, color=color), name)
         
+        ### Adjacency matrix
+        # list_of_names = []
+        # adjacency_matrix = self.adjacency_matrix.toarray()
+        # for i in range(len(adjacency_matrix)//16):
+        #     for j in range(len(adjacency_matrix)//16):
+        #         if adjacency_matrix[i, j] == 1:
+        #             p1 = self.centroids[i]
+        #             p2 = self.centroids[j]
+        #             name = f"adj_{i}_{j}"
+        #             list_of_names.append(name)
+        #             self.addShape(Line3D(p1, p2, width = 0.1, color=color), name)
+        
+        ### Elevated Distance matrix
         # el_dist_matrix = self.create_elevation_distance_matrix().toarray()
         # # retrieve the line indices
         # lines = []
@@ -150,6 +154,7 @@ class PlagueSpread3DTerrain(Scene3D):
         # self.addShape(lineset, "elevation_distances")
         # list_of_names.append("elevation_distances")
 
+        ### Distance Map
         # pointset_centroids = PointSet3D(self.centroids, size=1, color=color)
         # self.addShape(pointset_centroids, "centroids")
         # list_of_names.append("centroids")
@@ -178,6 +183,35 @@ class PlagueSpread3DTerrain(Scene3D):
         #     self.removeShape("centroids")
         #     self.addShape(pointset_centroids, "centroids")
 
+        ### Visualizing calculated elevation
+        list_of_names = []
+        if self.ELEVATION_DISTANCE and self.uphill_indices_matrix is not None and self.downhill_indices_matrix is not None:
+            uphill_distances = self.uphill_indices_matrix.toarray() # boolean matrix
+            downhill_distances = self.downhill_indices_matrix.toarray() # boolean matrix
+            
+            console_log("Showing uphill and downhill lines...")
+            uphill_lines = []
+            downhill_lines = []
+            for i in range(len(uphill_distances)):
+                for j in range(len(uphill_distances)):
+                    if uphill_distances[i, j]:
+                        uphill_lines.append((i, j))
+                    if downhill_distances[i, j]:
+                        downhill_lines.append((i, j))
+                    
+            #increase the z value of the points to be more visible 
+            uphill_points = self.centroids + np.array([0, 0, 0.01])
+            uphill_lineset = LineSet3D(uphill_points, uphill_lines, width=1, color=Color.RED)
+            downhill_points = self.centroids + np.array([0, 0, +0.01])
+            downhill_lineset = LineSet3D(downhill_points, downhill_lines, width=1, color=Color.BLUE)
+            self.addShape(uphill_lineset, "uphill_lines")
+            self.addShape(downhill_lineset, "downhill_lines")
+            list_of_names.append("uphill_lines")
+            list_of_names.append("downhill_lines")
+            console_log("Done.")
+        elif self.ELEVATION_DISTANCE:
+            console_log("Uphill and downhill matrices are not available.")
+
         return list_of_names
 
     def _show_path(self, start, end):
@@ -187,7 +221,7 @@ class PlagueSpread3DTerrain(Scene3D):
         dijkstra.calculate_shortest_paths_from_vertex(start)
         shortest_paths = dijkstra.get_shortest_path(start, end)
         shortest_costs = dijkstra.get_distances()
-        console_log(f"Shortest path cost: {shortest_costs[start][end]}")
+        self.terminal_log(f"Shortest path cost: {shortest_costs[start][end]}")
 
         list_of_names = []
         lines = []
@@ -201,25 +235,36 @@ class PlagueSpread3DTerrain(Scene3D):
         self.addShape(lineset, "shortest_paths")
         list_of_names.append("shortest_paths")
         
-        if self.elevation_distance_matrix is None:
-            self.elevation_distance_matrix = self.create_elevation_distance_matrix()
-        elevation_distance_matrix = self.elevation_distance_matrix.toarray()
-        dijkstra_elev = Dijkstra(elevation_distance_matrix)
-        dijkstra_elev.calculate_shortest_paths_from_vertex(start)
-        shortest_costs_elev = dijkstra_elev.get_distances()
-        console_log(f"Elevated shortest path cost: {shortest_costs_elev[start][end]}")
-        shortest_paths_elev = dijkstra_elev.get_shortest_path(start, end)
+        if self.ELEVATION_DISTANCE:
+            if self.elevation_distance_matrix is None:
+                self.elevation_distance_matrix = self.create_elevation_distance_matrix()
+            elevation_distance_matrix = self.elevation_distance_matrix.toarray()
+            dijkstra_elev = Dijkstra(elevation_distance_matrix)
+            dijkstra_elev.calculate_shortest_paths_from_vertex(start)
+            shortest_costs_elev = dijkstra_elev.get_distances()
+            self.terminal_log(f"Elevated shortest path cost: {shortest_costs_elev[start][end]}")
+            shortest_paths_elev = dijkstra_elev.get_shortest_path(start, end)
 
-        lines = []
-        for i in range(len(shortest_paths_elev) - 1):
-            lines.append((i, i + 1))
-        elevated_points = self.centroids[shortest_paths_elev]
-        # increase the z value of the elevated points to be more visible
-        elevated_points[:, 2] += 0.01
-        lineset = LineSet3D(elevated_points, lines, width=5, color=Color.YELLOWGREEN)
-        self.removeShape("shortest_paths_elev")
-        self.addShape(lineset, "shortest_paths_elev")
-        list_of_names.append("shortest_paths_elev")
+            lines = []
+            for i in range(len(shortest_paths_elev) - 1):
+                lines.append((i, i + 1))
+            elevated_points = self.centroids[shortest_paths_elev]
+            # increase the z value of the elevated points to be more visible
+            elevated_points[:, 2] += 0.01
+            lineset = LineSet3D(elevated_points, lines, width=5, color=Color.YELLOWGREEN)
+            self.removeShape("shortest_paths_elev")
+            self.addShape(lineset, "shortest_paths_elev")
+            list_of_names.append("shortest_paths_elev")
+
+        if self.EUCLIDEAN:
+            # the euclidean path between the two points
+            # is simply the straight line between them
+            name = "euclidean_path"
+            euclidean_line = Line3D(self.centroids[start], self.centroids[end], width=1, color=Color.BLACK)
+            self.removeShape(name)
+            self.addShape(euclidean_line, name)
+            self.terminal_log(f"Euclidean distance: {np.linalg.norm(self.centroids[start] - self.centroids[end])}")
+            list_of_names.append(name)
         
         return list_of_names
 
@@ -269,6 +314,60 @@ class PlagueSpread3DTerrain(Scene3D):
         self.addShape(pointset, "final_points")
         end_time = time()
         console_log(f"Time taken for highest points test: {end_time - start_time} seconds.")
+
+    def _barycentric_interpolation_test(self, pt=np.array([0.5, 0.5, 0])):
+        triangle_index, _ = get_triangle_of_point(pt, self.triangle_indices, self.mesh.vertices)
+        triangle_vertices = self.grid.points[self.triangle_indices[triangle_index]]
+        self.addShape(Point3D(triangle_vertices[0], size=0.1, color=Color.RED), f"triangle_vertex_1_{pt}")
+        self.addShape(Point3D(triangle_vertices[1], size=0.1, color=Color.RED), f"triangle_vertex_2_{pt}")
+        self.addShape(Point3D(triangle_vertices[2], size=0.1, color=Color.RED), f"triangle_vertex_3_{pt}")
+        # # check if the order of the triangle vertices is correct, i.e. counter-clockwise
+        # self.addShape(Arrow3D(triangle_vertices[0], triangle_vertices[1], color=Color.RED), f"arrow_1_{pt}")
+        # self.addShape(Arrow3D(triangle_vertices[1], triangle_vertices[2], color=Color.BLUE), f"arrow_2_{pt}")
+        # self.addShape(Arrow3D(triangle_vertices[2], triangle_vertices[0], color=Color.GREEN), f"arrow_3_{pt}")
+
+        self.addShape(Point3D(pt, size=0.5, color=Color.BLUE), f"test_point_{pt}")
+        # self.addShape(Line3D(pt, self.centroids[triangle_index], color=Color.ORANGE), f"line_to_centroid_triangle_{pt}")
+        # straight vertical line through the original point
+        lower_limit = np.array([pt[0], pt[1], -1])
+        upper_limit = np.array([pt[0], pt[1], 1])
+        self.addShape(Line3D(lower_limit, upper_limit, width=0.02, color=Color.BLACK), f"vertical_line_{pt}")
+
+
+        # barycentric interpolation
+        # create a 2d array as input for the function
+        pt = pt.reshape(1, -1)
+
+        height, debug_point_list, debug_triangle_list = barycentric_interpolate_height(pt[:, :2], self.mesh.triangles, self.mesh.vertices, debug=True)
+        console_log(f"Height at point {pt}: {height}, {pt[0][2]}")
+        # assign the height to the point
+        pt[0][2] = height   
+        self.addShape(Point3D(pt[0], size=0.05, color=Color.GREEN), f"interpolated_point_{pt}")
+        print(f"Debug triangle list: {debug_triangle_list}")
+        print(f"Debug point list: {debug_point_list}")
+        # for point in debug_point_list:
+
+            
+        for triangle in debug_triangle_list:
+            tri_idx = self.mesh.triangles[triangle]
+            p1, p2, p3 = self.mesh.vertices[tri_idx]
+            self.addShape(Point3D(p1, size=0.1, color=Color.MAGENTA), f"tri_vertex_1_{p1}")
+            self.addShape(Point3D(p2, size=0.1, color=Color.MAGENTA), f"tri_vertex_2_{p2}")
+            self.addShape(Point3D(p3, size=0.1, color=Color.MAGENTA), f"tri_vertex_3_{p3}")
+
+            tri_idx_minus_1 = self.mesh.triangles[triangle - 1]
+            tri_idx_plus_1 = self.mesh.triangles[triangle + 1]
+            p1, p2, p3 = self.mesh.vertices[tri_idx_minus_1]
+            # self.addShape(Point3D(p1, size=0.1, color=Color.BLACK), f"tri_vertex_1_{p1}")
+            # self.addShape(Point3D(p2, size=0.1, color=Color.BLACK), f"tri_vertex_2_{p2}")
+            # self.addShape(Point3D(p3, size=0.1, color=Color.BLACK), f"tri_vertex_3_{p3}")
+
+            # p1, p2, p3 = self.mesh.vertices[tri_idx_plus_1]
+            # self.addShape(Point3D(p1, size=0.1, color=Color.YELLOW), f"tri_vertex_1_{p1}")
+            # self.addShape(Point3D(p2, size=0.1, color=Color.YELLOW), f"tri_vertex_2_{p2}")
+            # self.addShape(Point3D(p3, size=0.1, color=Color.YELLOW), f"tri_vertex_3_{p3}")
+        for idx in debug_point_list:
+            self.addShape(Point3D(pt[idx], size=0.1, color=Color.BLACK), f"debug_point_{idx}")
 
 
     def load_terrain(self):
@@ -815,35 +914,92 @@ class PlagueSpread3DTerrain(Scene3D):
         self.shortest_paths_matrix = shortest_paths_matrix
         return shortest_paths_matrix
     
+    # def calculate_elevation_distance_matrix(self, centroids, adjacency_matrix, uphill_weight=1, downhill_weight=1):
+    #     '''Calculates the elevation distance matrix between the centroids of the triangles.'''
+    #     num_centroids = len(centroids)
+    #     elevation_distance_matrix = lil_matrix((num_centroids, num_centroids)) # for construction
+    #     # Initialize matrices to track uphill and downhill indices
+    #     uphill_indices_matrix = lil_matrix((num_centroids, num_centroids), dtype=bool)
+    #     downhill_indices_matrix = lil_matrix((num_centroids, num_centroids), dtype=bool)
+
+    #     for i in tqdm(range(num_centroids), desc="Calculating elevation distances", leave=True):
+    #         adjacent_indices = adjacency_matrix[i].indices
+    #         # check if there is geography specific information
+    #         # if the centroid is in the mountainous area, we consider it to be impassable
+    #         if i in self.mountainous_area_idxs:
+    #             elevation_distance_matrix[i, adjacent_indices] = np.inf
+    #             continue
+    #         # Horizontal distances in the x and y plane
+    #         horizontal_distances = np.linalg.norm(centroids[i][:2] - centroids[adjacent_indices][:, :2], axis=1)
+    #         # Elevation differences
+    #         delta_z = (centroids[i][2] - centroids[adjacent_indices][:, 2]) # direction of uphill or downhill decided by the sign
+    #         # positive sign means downhill (z_i > z_adj) and negative sign means uphill (z_i < z_adj)
+    #         downhill_values = delta_z > 0
+    #         vertical_distances = np.copy(delta_z)
+    #         vertical_distances[downhill_values] = -downhill_weight * delta_z[downhill_values] # reduce the gain for downhill movement
+    #         vertical_distances[~downhill_values] = uphill_weight * np.abs(delta_z[~downhill_values])
+    #         # Calculate the elevation distance
+    #         # if the centroid is in the tunnel, we consider it to be massively preferable
+    #         if i in self.tunnel_lines_idxs[0]:
+    #             elevation_distance_matrix[i, adjacent_indices] = (horizontal_distances + vertical_distances)/10
+    #             continue
+    #         elevation_distance_matrix[i, adjacent_indices] = horizontal_distances + vertical_distances
+            
+    #         #---
+    #         # Mark uphill and downhill indices
+    #         uphill_indices_matrix[i, adjacent_indices[~downhill_values]] = True
+    #         downhill_indices_matrix[i, adjacent_indices[downhill_values]] = True
+
+    #     elevation_distance_matrix = elevation_distance_matrix.tocsr()
+    #     self.uphill_indices_matrix = uphill_indices_matrix.tocsr() # debug
+    #     self.downhill_indices_matrix = downhill_indices_matrix.tocsr() # debug
+    #     console_log(f"Shape of the elevation distance matrix: {elevation_distance_matrix.shape}")
+    #     return elevation_distance_matrix
+
     def calculate_elevation_distance_matrix(self, centroids, adjacency_matrix, uphill_weight=1, downhill_weight=1):
         '''Calculates the elevation distance matrix between the centroids of the triangles.'''
         num_centroids = len(centroids)
         elevation_distance_matrix = lil_matrix((num_centroids, num_centroids)) # for construction
+        uphill_indices_matrix = lil_matrix((num_centroids, num_centroids), dtype=bool)
+        downhill_indices_matrix = lil_matrix((num_centroids, num_centroids), dtype=bool)
 
         for i in tqdm(range(num_centroids), desc="Calculating elevation distances", leave=True):
             adjacent_indices = adjacency_matrix[i].indices
-            # check if there is geography specific information
-            # if the centroid is in the mountainous area, we consider it to be impassable
+            
             if i in self.mountainous_area_idxs:
                 elevation_distance_matrix[i, adjacent_indices] = np.inf
                 continue
-            # Horizontal distances in the x and y plane
+            
             horizontal_distances = np.linalg.norm(centroids[i][:2] - centroids[adjacent_indices][:, :2], axis=1)
-            # Elevation differences
-            delta_z = -(centroids[i][2] - centroids[adjacent_indices][:, 2]) # direction of uphill or downhill decided by the sign
-            # positive sign means downhill (z_i > z_adj) and negative sign means uphill (z_i < z_adj)
-            downhill_values = delta_z > 0
-            vertical_distances = np.copy(delta_z)
-            vertical_distances[downhill_values] = -downhill_weight * delta_z[downhill_values] # reduce the gain for downhill movement
-            vertical_distances[~downhill_values] = uphill_weight * np.abs(delta_z[~downhill_values])
-            # Calculate the elevation distance
-            # if the centroid is in the tunnel, we consider it to be massively preferable
+            delta_y = centroids[i][1] - centroids[adjacent_indices][:, 1]  # difference in y (latitude)
+            delta_z = centroids[i][2] - centroids[adjacent_indices][:, 2]  # difference in z (elevation)
+
+            uphill_condition = (delta_y > 0) & (delta_z > 0)  # y increasing and z increasing -> uphill
+            downhill_condition = (delta_y > 0) & (delta_z < 0)  # y increasing and z decreasing -> downhill
+
+            vertical_distances = np.zeros_like(delta_z)
+            vertical_distances[uphill_condition] = uphill_weight * delta_z[uphill_condition]
+            vertical_distances[downhill_condition] = -downhill_weight * delta_z[downhill_condition]
+
             if i in self.tunnel_lines_idxs[0]:
-                elevation_distance_matrix[i, adjacent_indices] = (horizontal_distances + vertical_distances)/10
-                continue
-            elevation_distance_matrix[i, adjacent_indices] = horizontal_distances + vertical_distances
+                elevation_distance_matrix[i, adjacent_indices] = (horizontal_distances + vertical_distances) / 10
+            else:
+                elevation_distance_matrix[i, adjacent_indices] = horizontal_distances + vertical_distances
+
+            uphill_indices_matrix[i, adjacent_indices[uphill_condition]] = True
+            downhill_indices_matrix[i, adjacent_indices[downhill_condition]] = True
 
         elevation_distance_matrix = elevation_distance_matrix.tocsr()
+        #==========================================
+        self.uphill_indices_matrix = uphill_indices_matrix.tocsr()
+        self.downhill_indices_matrix = downhill_indices_matrix.tocsr()
+        # store the uphill and downhill indices for debugging
+        path = os.path.join(os.path.dirname(__file__), "resources", "terrain")
+        uphill_indices_file_path = os.path.join(path, "uphill_indices.npz")
+        downhill_indices_file_path = os.path.join(path, "downhill_indices.npz")
+        save_npz(uphill_indices_file_path, self.uphill_indices_matrix)
+        save_npz(downhill_indices_file_path, self.downhill_indices_matrix)
+        #==========================================
         console_log(f"Shape of the elevation distance matrix: {elevation_distance_matrix.shape}")
         return elevation_distance_matrix
     
@@ -867,6 +1023,11 @@ class PlagueSpread3DTerrain(Scene3D):
             console_log("Loading the elevation distance matrix...")
             start_time = time()
             elevation_distance_matrix = load_npz(elev_dist_file_path)
+            try:
+                self.uphill_indices_matrix = load_npz(os.path.join(path, "uphill_indices.npz"))
+                self.downhill_indices_matrix = load_npz(os.path.join(path, "downhill_indices.npz"))
+            except:
+                console_log("Uphill and downhill indices matrices not found.")
             end_time = time()
             console_log(f"Elevation distance matrix loaded in {end_time - start_time} seconds.")
         else:
@@ -1176,6 +1337,7 @@ class PlagueSpread3DTerrain(Scene3D):
                     names = self._show_matrices(roster_colors[self.current_color_pointer])
                     for name in names:
                         self.debug_names.append(name)
+                    console_log(f"DEBUG {self.debug_names}")
             if symbol == Key.RIGHT and modifiers & Key.MOD_ALT:
                 ''' Change the color of the grid clockwise.'''
                 self.current_color_pointer += 1
@@ -1268,6 +1430,8 @@ class PlagueSpread3DTerrain(Scene3D):
         self.wireframe_toggle = False
         self.show_path_start = None
         self.show_path_end = None
+        self.uphill_indices_matrix = None
+        self.downhill_indices_matrix = None
 
         # colors
         self.current_color_pointer = 11
@@ -1482,6 +1646,7 @@ class PlagueSpread3DTerrain(Scene3D):
         # ch_pointset = PointSet3D(points=ch, color=Color.BLACK, size=2)
         ch_lineset = LineSet3D(ch, lines, width=1, color=Color.BLACK)
         # self.addShape(ch_pointset, "ch_pointset")
+        self.removeShape("ch_lineset")
         self.addShape(ch_lineset, "ch_lineset")
 
         # for each point in the pointset, check if it is within the convex hull
@@ -1811,6 +1976,11 @@ class PlagueSpread3DTerrain(Scene3D):
     def find_infected_people(self):
         '''Finds the people infected by the wells, using geodesic or euclidean distances.'''
 
+        if len(self.infected_wells_indices) == 0:
+            return # no need to infect anyone if there are no infected wells
+        if len(self.population_pcd.points) == 0:
+            return # no need to infect anyone if there are no people
+
         # infected_people_indices is a list of indices of the infected people from the population_pcd.points
         self.infected_people_indices = []
 
@@ -1996,7 +2166,12 @@ class PlagueSpread3DTerrain(Scene3D):
         
     def find_infected_people_stochastic(self):
         '''Finds the people infected by the wells in a stochastic manner.'''
-        
+
+        if len(self.infected_wells_indices) == 0:
+            return # no need to infect anyone if there are no infected wells
+        if len(self.population_pcd.points) == 0:
+            return # no need to infect anyone if there are no people
+
         # infected_people_indices is a list of indices of the infected people from the population_pcd.points
         self.infected_people_indices = []
 

@@ -68,7 +68,6 @@ class PlagueSpread2D(Scene2D):
         console_log(f"Chances of choosing the closest well: {self.P1}, Chances of choosing the second closest well: {self.P2}, Chances of choosing the third closest well: {self.P3}") if self.RANDOM_SELECTION else None
         console_log(f"Number of infected people: {len(self.infected_people_indices)}")
         console_log(f"Percentage of infected people: {len(self.infected_people_indices) / self.POPULATION * 100}%")
-        console_log("---")
 
     def on_mouse_press(self, x, y, button, modifiers):
         self.my_mouse_pos.x = x
@@ -669,6 +668,31 @@ class PlagueSpread2D(Scene2D):
             if is_inside_polygon_2d(point, vertices):
                 return i
         return -1
+    
+    def getVoronoiCells(self, points):
+        '''Returns the indices of the Voronoi cells for an array of points.'''
+        assert self.Voronoi is not None, "Voronoi diagram is not initialized."
+        
+        vor = self.Voronoi
+        # Precompute Voronoi regions' vertices
+        regions_vertices = []
+        for region in vor.regions:
+            if len(region) == 0:
+                continue
+            vertices = np.array([vor.vertices[j] for j in region if j != -1])
+            regions_vertices.append(vertices)
+        
+        # Initialize an array to store the region index for each point
+        point_region_indices = -1 * np.ones(len(points), dtype=int)
+        
+        # Check each point against all regions
+        for i, vertices in enumerate(regions_vertices):
+            # Assuming is_inside_polygon_2d is adapted to handle an array of points and returns a boolean array
+            inside = is_inside_polygon_2d(points, vertices)
+            # For points inside this region, update their region index
+            point_region_indices[inside] = i
+        
+        return point_region_indices
     
     def finishBBoxEdges(self, edges_indexes, vor):
         """ Extend infinite edges of the Voronoi diagram to a finite distance. """
