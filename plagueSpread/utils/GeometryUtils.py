@@ -1,7 +1,11 @@
 '''Contains utility classes and functions for geometry operations.
 - LineEquation2D: Represents a 2D line equation.
-- isInsidePolygonD2D: Returns True if the point is inside the polygon.
-- barycentric_interpolate_height: Interpolates the height of a point using barycentric interpolation given a grid.'''
+- is_inside_polygon_2d: Returns True if the points are inside the polygon.
+- get_triangles_of_grid_points: Returns the vertices of the triangles containing the grid points.
+- barycentric_interpolate_grid_height: Interpolates the height of a point using barycentric interpolation given a grid.
+- calculate_triangle_centroids: Calculates the centroids of multiple triangles given their vertices.
+- CH_quickhull: Computes the convex hull of a set of points using the QuickHull algorithm.
+- barycentric_interpolate_height: Interpolates the height of points using barycentric interpolation.'''
 import os
 
 if __name__ == "__main__":
@@ -351,91 +355,6 @@ def barycentric_interpolate_height(points, triangles, vertices, debug=False):
     if debug:
         return interpolated_heights, debug_point_list, debug_triangle_list
     return interpolated_heights
-# def barycentric_interpolate_height(points, triangles, vertices, centroids, adjacent_centroids, kd_centroid_root, debug=False):
-#     """
-#     Interpolate the height of points using barycentric interpolation.
-
-#     Parameters:
-#     points (ndarray): Nx2 array of points to interpolate.
-#     triangles (ndarray): Mx3 array of indices into the vertices array, defining the triangles.
-#     vertices (ndarray): Px3 array of vertex positions (x, y, z).
-
-#     Returns:
-#     ndarray: Nx1 array of interpolated heights.
-#     """
-#     # x, y, z coordinates
-#     vert_x = vertices[:, 0]
-#     vert_y = vertices[:, 1]
-#     vert_z = vertices[:, 2]
-    
-#     # the vertices of the triangles
-#     tri_points = vertices[triangles]
-#     tri_x = tri_points[:, :, 0]
-#     tri_y = tri_points[:, :, 1]
-#     tri_z = tri_points[:, :, 2]
-
-#     #  from vertex 0 to vertex 1 and vertex 0 to vertex 2
-#     v0 = tri_points[:, 1] - tri_points[:, 0]
-#     v1 = tri_points[:, 2] - tri_points[:, 0]
-    
-#     # compute the determinant of the triangle's matrix (for barycentric coordinates)
-#     denom = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
-
-#     # KDTree for efficient point location
-#     kdtree = KDTree(vertices[:, :2])
-#     # kdtree = KDTree(centroids[:, :2])
-
-#     # initialize the interpolated heights
-#     interpolated_heights = np.zeros(len(points))
-
-#     #avg height
-#     avg_height = np.mean(vert_z)
-
-#     debug_point_list = []
-#     debug_triangle_list = []
-#     for i, point in enumerate(points):
-#         # Find the closest vertex in the KDTree to get an initial guess of the triangle
-#         # dist, idx = kdtree.query(point)
-#         nearest_centroid = KdNode.nearestNeighbor(np.array([point[0], point[1], avg_height]), kd_centroid_root) 
-#         idx = np.where(np.all(centroids == nearest_centroid.point, axis=1))[0][0]
-#         # dist, idx = kdtree.query(point)
-#         # # the adjacent triangles of the nearest centroid are where the adjacency matrix is 1
-#         adjacency_matrix = adjacent_centroids.toarray()
-#         triangle_indices = np.where(adjacency_matrix[idx] == 1)[0]
-        
-#         # triangle_indices = np.where(np.any(triangles == idx, axis=1))[0]
-        
-#         temp_debug_triangle_list = []
-#         for tri_idx in triangle_indices:
-#             v2 = point - tri_points[tri_idx, 0, :2]
-
-#             # Compute barycentric coordinates
-#             # u = (v2[0] * v1[tri_idx, 1] - v1[tri_idx, 0] * v2[1]) / denom[tri_idx]
-#             # v = (v0[tri_idx, 0] * v2[1] - v2[0] * v0[tri_idx, 1]) / denom[tri_idx]
-
-#             u = (v2[0] * v1[tri_idx, 1] - v1[tri_idx, 0] * v2[1]) / denom[tri_idx]
-#             v = (v0[tri_idx, 0] * v2[1] - v2[0] * v0[tri_idx, 1]) / denom[tri_idx]
-#             w = 1 - u - v
-
-#             # Check if the point is inside the triangle
-#             # if u >= 0 and v >= 0 and w >= 0:
-#             if is_inside_polygon_2d(np.array([point]), tri_points[tri_idx, :, :2]):
-#                 a, b, c = tri_z[tri_idx]
-#                 interpolated_heights[i] = u * a + v * b + w * c
-#                 break
-#             temp_debug_triangle_list.append(tri_idx)
-#         else:
-#             # snap to the closest vertex
-#             debug_point_list.append(i)
-#             for temp in temp_debug_triangle_list:
-#                 debug_triangle_list.append(temp)
-#             # interpolated_heights[i] = vert_z[idx]
-#             # interpolated_heights[i] = centroids[idx, 2]
-#             interpolated_heights[i] = 0.25
-
-#     if debug:
-#         return interpolated_heights, debug_point_list, debug_triangle_list
-#     return interpolated_heights
 
 # as defined in Lab 1
 def CH_quickhull(points:np.array):

@@ -1454,14 +1454,21 @@ class PlagueSpread3DTerrain(Scene3D):
         self.print("> W: toggle dense regions.")
         self.print("> E: toggle geodesic or euclidean")
         self.print("> G: consider elevation distances.")
-        self.print("> V: toggle Voronoi diagram.")
-        self.print("> SHIFT + V: use Voronoi diagram for computations.")
+        # self.print("> V: toggle Voronoi diagram.")
+        # self.print("> SHIFT + V: use Voronoi diagram for computations.")
         self.print("> SHIFT + MOUSELEFT: add, remove a well.")
         self.print("> SHIFT + MOUSERIGHT: infect, disinfect a well.")
         self.print("> R: toggle between deterministic, stochastic scenario.")
         if self.RANDOM_SELECTION:
             self.print(">-> P: reduce probability of closest well.")
             self.print(">-> SHIFT + P: increase probability of closest well.")
+        self.print("Debug: ----------------------------")
+        self.print("> ALT + UP: show matrices of the grid. Default: uphills, downhills.")
+        self.print("> ALT + LEFTMOUSE: set start point of path.")
+        self.print("> ALT + RIGHTMOUSE: set end point of path.")
+        self.print("> ALT + LEFT or RIGHT: change color of grid.")
+        self.print("> ALT + C: toggle visibility mode of mesh.")
+        self.print("> ALT + SPACE: clear debug shapes.")
 
         # print and not console_log because we want the instructions to appear either way
         print("--> Press ENTER to reset the scene & print instructions.")
@@ -1481,6 +1488,13 @@ class PlagueSpread3DTerrain(Scene3D):
         if self.RANDOM_SELECTION:
             print("-->---> Press P to reduce the probability of choosing the closest well.")
             print("-->---> Press SHIFT + P to increase the probability of choosing the closest well.")
+        print("Debug: ----------------------------")
+        print("--> Press ALT + UP to show matrices of the grid. Default: uphills, downhills.")
+        print("--> Press ALT + LEFTMOUSE to set the start point of the path (euclidean, geodesic or elevation aware).")
+        print("--> Press ALT + RIGHTMOUSE to set the end point of the path (euclidean, geodesic or elevation aware).")
+        print("--> Press ALT + LEFT or RIGHT to change the color of the grid.")
+        print("--> Press ALT + C to toggle the visibility mode of the mesh.")
+        print("--> Press ALT + SPACE to clear the debug shapes.")
 
     def wipe_scene(self):
         '''Wipes the scene of all shapes.'''

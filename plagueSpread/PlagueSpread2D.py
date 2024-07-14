@@ -34,10 +34,6 @@ TRIAL_MODE = False # False
 
 class PlagueSpread2D(Scene2D):
     def __init__(self, WIDTH, HEIGHT, faux_run = False):
-        if faux_run:
-            super().__init__(WIDTH, HEIGHT, "Plague Spread 2D", resizable=False)
-            super().on_key_press(Key.ESCAPE, None)
-            return
         super().__init__(WIDTH, HEIGHT, "Plague Spread 2D", resizable=False)
         # initialize the PlagueSpread2D scenario mode variables
         self._scenario_mode_init()

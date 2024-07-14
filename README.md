@@ -44,3 +44,25 @@
 --> Press R to toggle between deterministic and stochastic scenario.\
 -->---> Press P to reduce the probability of choosing the closest well.\
 -->---> Press SHIFT, and then P to increase the probability of choosing the closest well.\
+
+>--> Press ENTER to reset the scene & print instructions.\
+--> Press BACKSPACE to print the scenario parameters.\
+--> Press UP to toggle between trial mode and normal mode.\
+--> Press RIGHT or LEFT to increase or decrease the number of wells.\
+--> Press M or N to increase or decrease the population.\
+--> Press 1 or 2 to set the scenario to version 1 or 2.\
+--> Press W to toggle dense regions of the population.\
+--> Press E to toggle between geodesic and euclidean distances.\
+--> Press G to consider the elevation in distance calculations.\
+--> Press V to toggle the Voronoi diagram.\
+--> Press SHIFT + V to use the Voronoi diagram for computations.\
+--> Press SHIFT + LEFT MOUSE BUTTON to add or remove a well.\
+--> Press SHIFT + LEFT MOUSE BUTTON to infect or disinfect a well.\
+--> Press R to toggle between deterministic and stochastic scenario.\
+Debug: ----------------------------\
+--> Press ALT + UP to show matrices of the grid. Default: uphills, downhills.\
+--> Press ALT + LEFTMOUSE to set the start point of the path (euclidean, geodesic or elevation aware).\
+--> Press ALT + RIGHTMOUSE to set the end point of the path (euclidean, geodesic or elevation aware).\
+--> Press ALT + LEFT or RIGHT to change the color of the grid.\
+--> Press ALT + C to toggle the visibility mode of the mesh.\
+--> Press ALT + SPACE to clear the debug shapes.\
