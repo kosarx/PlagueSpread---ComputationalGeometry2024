@@ -455,6 +455,8 @@ class PlagueSpread3DTerrain(Scene3D):
 
         self.setup_tunnels()
 
+        # add as needed...
+
     def toggle_mesh(self, action=-1):
         '''Toggle which parts of the mesh to show.
         - 0: show only the wireframe

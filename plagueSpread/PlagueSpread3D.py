@@ -67,7 +67,7 @@ class PlagueSpread3D(Scene3D):
             self.Voronoi = self.getVoronoi(self.wells_pcd.points)
 
 
-        # self._print_instructions()
+        self._print_instructions()
         self.my_mouse_pos = Point3D((0, 0, 0))
         # self.addShape(self.my_mouse_pos, "mouse")
 
@@ -1113,7 +1113,7 @@ class PlagueSpread3D(Scene3D):
             version_3()
 
     def scenario_parameters_init(self):
-        self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 60, 100
+        self.GRID_SIZE = 100 # will create a grid of N x N points, choices: 20, 60, 100
         self.grid = None
         self.grid_lines = None
         self.bbx =[[-1, -1, 0], [1, 1, 0]]
