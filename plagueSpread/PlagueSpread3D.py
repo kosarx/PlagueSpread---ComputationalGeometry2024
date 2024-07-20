@@ -975,9 +975,13 @@ class PlagueSpread3D(Scene3D):
             if symbol == Key.BACKSPACE:
                 self._console_log_scenario()
             # reset the scene
-            if symbol == Key.ENTER:
+            if symbol == Key.ENTER and not modifiers & Key.MOD_SHIFT:
                 self.reset_scene()
                 self._print_instructions()
+            # toggle between infecting and not infecting
+            if symbol == Key.ENTER and modifiers & Key.MOD_SHIFT:
+                self.DO_INFECT = not self.DO_INFECT
+                self.reset_scene()
             # toggle between trial mode and normal mode
             if symbol == Key.UP:
                 self.TRIAL_MODE = not self.TRIAL_MODE
@@ -1068,8 +1072,8 @@ class PlagueSpread3D(Scene3D):
                 self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
         else:
             ## debug
-            roster_colors = [Color.RED, Color.BLUE, Color.GREEN,\
-                                Color.CYAN, Color.WHITE, Color.BLACK,\
+            roster_colors = [Color.BLACK, Color.BLUE, Color.GREEN,\
+                                Color.CYAN, Color.WHITE, Color.RED, \
                                 Color.GREEN, Color.YELLOW, Color.DARKRED,\
                                 Color.DARKGREEN, Color.YELLOWGREEN, Color.GRAY]
             if symbol == Key.UP and modifiers & Key.MOD_ALT:
@@ -1113,7 +1117,7 @@ class PlagueSpread3D(Scene3D):
             version_3()
 
     def scenario_parameters_init(self):
-        self.GRID_SIZE = 30 # will create a grid of N x N points, choices: 20, 60, 100
+        self.GRID_SIZE = 20 # will create a grid of N x N points, choices: 20, 60, 100
         self.grid = None
         self.grid_lines = None
         self.bbx =[[-1, -1, 0], [1, 1, 0]]
@@ -1139,6 +1143,7 @@ class PlagueSpread3D(Scene3D):
         # self.VORONOI_ACTIVE = False
         self.VORONOI_VISIBLE = False
         self.COMPUTE_WITH_VORONOI = False
+        self.DO_INFECT = True
         # debug
         self.debug_names = []
         self.show_path_start = None
@@ -1271,7 +1276,7 @@ class PlagueSpread3D(Scene3D):
 
         self.terminal_log(f"Wells point cloud is {len(self.wells_pcd.points)} points")
 
-        self.infect_wells(self.ratio_of_infected_wells)
+        self.infect_wells(self.ratio_of_infected_wells) if self.DO_INFECT else self.infect_wells(None, 0)
 
         (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic())
 
@@ -1318,7 +1323,7 @@ class PlagueSpread3D(Scene3D):
 
         self.terminal_log(f"Wells point cloud is {len(self.wells_pcd.points)} points")
 
-        self.infect_wells(self.ratio_of_infected_wells)
+        self.infect_wells(self.ratio_of_infected_wells) if self.DO_INFECT else self.infect_wells(None, 0)
 
         (self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()) #if self.DEBUG else None
 

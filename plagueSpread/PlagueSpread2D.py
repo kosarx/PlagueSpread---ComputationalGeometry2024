@@ -157,9 +157,13 @@ class PlagueSpread2D(Scene2D):
         if symbol == Key.BACKSPACE:
             self._console_log_scenario()
         # reset the scene
-        if symbol == Key.ENTER:
+        if symbol == Key.ENTER and not modifiers & Key.MOD_SHIFT:
             self.reset_scene()
             self._print_instructions()
+        # toggle between infecting and disinfecting the wells
+        if symbol == Key.ENTER and modifiers & Key.MOD_SHIFT:
+            self.DO_INFECT = not self.DO_INFECT
+            self.reset_scene()
         # toggle between trial mode and normal mode
         if symbol == Key.UP:
             self.TRIAL_MODE = not self.TRIAL_MODE
@@ -260,6 +264,7 @@ class PlagueSpread2D(Scene2D):
         # self.VORONOI_ACTIVE = False
         self.VORONOI_VISIBLE = False
         self.COMPUTE_WITH_VORONOI = False
+        self.DO_INFECT = True
 
         # colors
         self.healthy_population_color = Color.BLUE
@@ -269,6 +274,7 @@ class PlagueSpread2D(Scene2D):
 
     def _print_instructions(self):
         print("--> Press ENTER to reset the scene & print instructions.")
+        print("--> Press SHIFT + ENTER to toggle between infecting and disinfecting the wells.")
         print("--> Press BACKSPACE to print the scenario parameters.")
         print("--> Press UP to toggle between trial mode and normal mode.")
         print("--> Press RIGHT or LEFT to increase or decrease the number of wells.")
@@ -345,7 +351,7 @@ class PlagueSpread2D(Scene2D):
         
         console_log(f"Wells point cloud is {len(self.wells_pcd.points)} points")
 
-        self.infect_wells(self.ratio_of_infected_wells)
+        self.infect_wells(self.ratio_of_infected_wells) if self.DO_INFECT else self.infect_wells(None, 0)
 
         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
 
@@ -387,7 +393,7 @@ class PlagueSpread2D(Scene2D):
     
         console_log(f"Wells point cloud is {len(self.wells_pcd.points)} points")
 
-        self.infect_wells(self.ratio_of_infected_wells)
+        self.infect_wells(self.ratio_of_infected_wells) if self.DO_INFECT else self.infect_wells(None, 0)
 
         self.find_infected_people() if not self.RANDOM_SELECTION else self.find_infected_people_stochastic()
     
@@ -405,7 +411,7 @@ class PlagueSpread2D(Scene2D):
         wells_color_nparray = np.array(self.wells_pcd.colors)
         
         # ratio has priority over hard_number
-        if ratio:
+        if ratio is not None:
             num_of_infected_wells = int(ratio * len(wells_nparray))
             if num_of_infected_wells == 0:
                 # infect at least one well
@@ -413,7 +419,7 @@ class PlagueSpread2D(Scene2D):
             elif num_of_infected_wells == 1:
                 # infect at least two wells
                 num_of_infected_wells = 2
-        elif hard_number:
+        elif hard_number is not None:
             num_of_infected_wells = hard_number
 
         # select num_of_infected_wells random wells from the wells_nparray variable
