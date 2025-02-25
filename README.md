@@ -1,6 +1,11 @@
 # 3Δ Υπολογιστική Γεωμετρία & Όραση - Πανεπιστήμιο Πατρών 2024
 # Plague Spread
 Κοσμάς Αρχοντής 1084020
+
+## Showcase
+https://github.com/user-attachments/assets/4111d4b8-7c4d-46a9-910e-0e6b72d178b8
+
+## GIFs
 ![2D Scenario 2 GIF for descending probabilities](images/gif/version2.gif)
 
 ![3D Scenario 2 GIF for descending probabilities](images/gif/version3.gif)
